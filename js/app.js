@@ -9,7 +9,7 @@
   const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
   const thisBook = () => String(new Date().getFullYear() + 543);
 
-  const S = { user: null, companies: [], certs: [], coId: '', imgs: {}, users: [], started: false, copies: 'both', mode: 'form' };
+  const S = { user: null, companies: [], certs: [], payees: [], tags: [], pFilter: null, lTag: '', coId: '', imgs: {}, users: [], started: false, copies: 'both', mode: 'form' };
   let D = null, CD = null;
   const isAdmin = () => S.user && S.user.role === 'admin';
   const co = id => S.companies.find(c => c.id === id);
@@ -50,9 +50,10 @@
   }
   $('#bootRetry').onclick = () => { $('#bootRetry').hidden = true; showErr($('#bootErr'), ''); boot(); };
   async function loadAll() { const d = await API.call('bootstrap'); apply(d); saveCache(); }
-  function saveCache() { LS.set('cache', { user: S.user, companies: S.companies, certs: S.certs }); }
+  function saveCache() { LS.set('cache', { user: S.user, companies: S.companies, certs: S.certs, payees: S.payees, tags: S.tags }); }
   function apply(d) {
-    S.user = d.user; S.companies = d.companies || []; S.certs = d.certs || [];
+    S.user = d.user; S.user.favs = S.user.favs || []; S.companies = d.companies || []; S.certs = d.certs || [];
+    S.payees = d.payees || []; S.tags = d.tags || [];
     const last = LS.get('lastCo', '');
     S.coId = co(last) ? last : (co(S.coId) ? S.coId : (S.companies[0] && S.companies[0].id) || '');
   }
@@ -93,12 +94,12 @@
   function startApp() {
     screen('app'); document.body.classList.toggle('is-admin', isAdmin());
     if (!S.started) { S.started = true; D = blank(); CD = coBlank(); }
-    renderCoSel(); renderList(); fillForm(); renderCompanies(); coForm(); renderSettings(); payeeList();
+    renderCoSel(); renderList(); fillForm(); renderCompanies(); coForm(); renderSettings(); payeeList(); renderPayees();
     route();
   }
 
   /* ================= routing ================= */
-  const VIEWS = ['list', 'edit', 'companies', 'settings'];
+  const VIEWS = ['list', 'edit', 'payees', 'companies', 'settings'];
   function route() {
     let v = location.hash.slice(1) || 'list';
     if (!VIEWS.includes(v) || (v === 'companies' && !isAdmin())) v = 'list';
@@ -143,7 +144,9 @@
   /* ================= list ================= */
   function renderList() {
     const q = $('#q').value.trim().toLowerCase(), m = $('#mon').value;
-    const rows = S.certs.filter(c => c.companyId === S.coId && (!m || String(c.issueDate).startsWith(m)) &&
+    renderTagBar('#lTags', S.lTag, false);
+    const tagOk = c => { if (!S.lTag) return true; const p = payeeOfCert(c); return !!p && (p.tags || []).includes(S.lTag); };
+    const rows = S.certs.filter(c => c.companyId === S.coId && tagOk(c) && (!m || String(c.issueDate).startsWith(m)) &&
       (!q || [c.payeeName, c.payeeTaxId, c.no, c.book + '/' + c.no].join(' ').toLowerCase().includes(q)))
       .sort((a, b) => String(b.issueDate).localeCompare(String(a.issueDate)) || String(b.no).localeCompare(String(a.no)));
     const ta = rows.reduce((s, c) => s + num(c.totalAmount), 0), tt = rows.reduce((s, c) => s + num(c.totalTax), 0);
@@ -158,7 +161,8 @@
       <span class="hint">โดย ${esc(c.createdByName || '-')}</span></button>`).join('')
       : `<div class="empty">${S.certs.some(c => c.companyId === S.coId) ? 'ไม่พบเอกสารที่ตรงกับตัวกรอง' : 'ยังไม่มีเอกสารของบริษัทนี้ — กด “ออกใบใหม่”'}</div>`;
   }
-  $('#q').addEventListener('input', renderList); $('#mon').addEventListener('input', renderList);
+  $('#q').addEventListener('input', renderList);
+  $('#lTags').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (!b) return; S.lTag = b.dataset.t === S.lTag ? '' : b.dataset.t; renderList(); }); $('#mon').addEventListener('input', renderList);
   $('#certCards').addEventListener('click', e => {
     const b = e.target.closest('[data-open]'); if (!b) return;
     const c = S.certs.find(x => x.id === b.dataset.open); if (!c) return;
@@ -167,7 +171,7 @@
 
   /* ================= editor ================= */
   function blank() {
-    return { id: null, companyId: S.coId, book: thisBook(), no: '', issueDate: todayISO(), form: 6, seq: '',
+    return { id: null, companyId: S.coId, payeeId: null, book: thisBook(), no: '', issueDate: todayISO(), form: 6, seq: '',
       payeeType: 'j', payeeName: '', payeeTaxId: '', payeeBranch: '', payeeAddress: '', payer: 0, payerOther: '',
       items: [{ id: uid(), cat: 'c5', desc: 'ค่าบริการ', date: todayISO(), amount: '', rate: 3 }],
       funds: { gpf: '', sso: '', pvd: '' }, useSig: true, useStamp: true };
@@ -189,6 +193,7 @@
     for (const el of $$('#f [data-k]')) { const v = getP(D, el.dataset.k); if (el.type === 'checkbox') el.checked = v !== false; else el.value = v ?? ''; }
     $('#noIn').placeholder = 'อัตโนมัติ (' + nextNo(D.companyId, D.book) + ')';
     $$('#ptype button').forEach(b => b.classList.toggle('on', b.dataset.v === D.payeeType));
+    renderFavStrip();
     $('#poL').hidden = +D.payer !== 3;
     $('#copiesSel').value = S.copies;
     const tag = $('#editTag');
@@ -233,6 +238,7 @@
       setP(D, el.dataset.k, v);
       if (el.dataset.k === 'payer') $('#poL').hidden = v !== 3;
       if (el.dataset.k === 'book') $('#noIn').placeholder = 'อัตโนมัติ (' + nextNo(D.companyId, D.book) + ')';
+      if (el.dataset.k === 'payeeName' || el.dataset.k === 'payeeTaxId') D.payeeId = null;
       if (el.dataset.k === 'payeeName') autofillPayee();
       preview(); return;
     }
@@ -264,18 +270,30 @@
   $('.ed').classList.add('m-form');
 
   function autofillPayee() {
-    const p = [...S.certs].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).find(c => c.payeeName === D.payeeName);
-    if (p && !D.payeeTaxId) {
-      Object.assign(D, { payeeType: p.payeeType, payeeTaxId: p.payeeTaxId, payeeBranch: p.payeeBranch, payeeAddress: p.payeeAddress, form: p.form });
-      const nm = D.payeeName; fillForm(); $('[data-k="payeeName"]').value = nm;
-    }
+    const p = S.payees.find(x => x.name === D.payeeName);
+    if (p && !D.payeeTaxId) { applyPayee(p); }
   }
-  function payeeList() { $('#payees').innerHTML = [...new Set(S.certs.map(c => c.payeeName).filter(Boolean))].map(n => `<option value="${esc(n)}">`).join(''); }
+  function payeeList() { $('#payees').innerHTML = S.payees.map(p => `<option value="${esc(p.name)}">`).join(''); }
+  function renderFavStrip() {
+    const favs = favPayees().slice(0, 12);
+    $('#favStrip').innerHTML = favs.map(p => `<button type="button" class="fv" data-pick="${esc(p.id)}">${esc(p.name)}</button>`).join('') +
+      `<button type="button" class="ghost" id="pickAll">${favs.length ? 'รายชื่อทั้งหมด…' : '★ เลือกจากรายชื่อ…'}</button>`;
+  }
+  $('#favStrip').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.pick) { const p = S.payees.find(x => x.id === b.dataset.pick); if (p) { applyPayee(p); toast('ใส่ข้อมูล ' + p.name + ' แล้ว'); } }
+    else openPicker();
+  });
 
   $('#save').onclick = () => busy($('#save'), 'กำลังบันทึก…', async () => {
     if (!D.companyId || !co(D.companyId)) throw new Error('เลือกหรือเพิ่มบริษัทผู้หักภาษีก่อน');
     const rec = await API.call('saveCert', { cert: D });
-    S.certs = S.certs.filter(x => x.id !== rec.id).concat(rec); saveCache();
+    S.certs = S.certs.filter(x => x.id !== rec.id).concat(rec);
+    if (rec.payeeId && !S.payees.some(p => p.id === rec.payeeId)) {
+      S.payees.push({ id: rec.payeeId, type: rec.payeeType, name: rec.payeeName, taxId: rec.payeeTaxId, branch: rec.payeeBranch, address: rec.payeeAddress, tags: [], defItem: {}, form: rec.form, createdBy: S.user.id });
+      renderPayees();
+    }
+    saveCache();
     D = clone(rec); fillForm(); renderList(); payeeList(); toast('บันทึกแล้ว เลขที่ ' + rec.book + '/' + rec.no);
   });
   function fname(ext) { return `WHT-50tawi-${String(D.book).replace(/[^\w-]/g, '')}-${String(D.no || 'draft').replace(/[^\w-]/g, '')}.${ext}`; }
@@ -311,7 +329,7 @@
   };
   function duplicate() {
     const src = D; D = blank();
-    Object.assign(D, { payeeType: src.payeeType, payeeName: src.payeeName, payeeTaxId: src.payeeTaxId, payeeBranch: src.payeeBranch, payeeAddress: src.payeeAddress, form: src.form, payer: src.payer, payerOther: src.payerOther });
+    Object.assign(D, { payeeId: src.payeeId || null, payeeType: src.payeeType, payeeName: src.payeeName, payeeTaxId: src.payeeTaxId, payeeBranch: src.payeeBranch, payeeAddress: src.payeeAddress, form: src.form, payer: src.payer, payerOther: src.payerOther });
     D.items = src.items.map(it => Object.assign({}, it, { id: uid(), amount: '', date: todayISO() }));
     fillForm(); toast('คัดลอกข้อมูลแล้ว ใส่ยอดเงินใหม่ได้เลย');
   }
@@ -406,6 +424,176 @@
   $('#padClr').onclick = clearPad; $('#padX').onclick = () => { $('#padWrap').hidden = true; };
   $('#padOk').onclick = async () => { if (!inked) return toast('วาดลายเซ็นก่อน'); const t = trim(pad); if (!t) return; CD.sig = await processImg(t.toDataURL('image/png'), 520); $('#padWrap').hidden = true; imgPrev(); toast('ใส่ลายเซ็นแล้ว กด “บันทึกบริษัท”'); };
 
+  /* ================= รายชื่อผู้ถูกหักภาษี / ดาว / กลุ่ม ================= */
+  const isFav = id => (S.user.favs || []).includes(id);
+  const favPayees = () => (S.user.favs || []).map(id => S.payees.find(p => p.id === id)).filter(Boolean);
+  const tagById = id => S.tags.find(t => t.id === id);
+  const tagChip = id => { const t = tagById(id); return t ? `<span class="tg"><i class="dot" style="background:${esc(t.color)}"></i>${esc(t.name)}</span>` : ''; };
+  function payeeOfCert(c) {
+    return (c.payeeId && S.payees.find(p => p.id === c.payeeId)) || S.payees.find(p => p.name === c.payeeName) || null;
+  }
+  function renderTagBar(sel, cur, withFav) {
+    const used = new Set(); S.payees.forEach(p => (p.tags || []).forEach(t => used.add(t)));
+    const tags = withFav ? S.tags : S.tags.filter(t => used.has(t.id));
+    const el = $(sel);
+    if (!withFav && !tags.length) { el.innerHTML = ''; el.hidden = true; return; }
+    el.hidden = false;
+    el.innerHTML = (withFav ? `<button type="button" data-t="fav" class="${cur === 'fav' ? 'on' : ''}">★ โปรด</button><button type="button" data-t="all" class="${cur === 'all' ? 'on' : ''}">ทั้งหมด</button>`
+      : `<button type="button" data-t="" class="${!cur ? 'on' : ''}">ทุกกลุ่ม</button>`) +
+      tags.map(t => `<button type="button" data-t="${esc(t.id)}" class="${cur === t.id ? 'on' : ''}"><i class="dot" style="background:${esc(t.color)}"></i> ${esc(t.name)}</button>`).join('') +
+      (withFav ? '<button type="button" class="ghost" data-t="manage">⚙ จัดการกลุ่ม</button>' : '');
+  }
+  function payeeMatches(p, q, f) {
+    if (f === 'fav' && !isFav(p.id)) return false;
+    if (f && f !== 'fav' && f !== 'all' && !(p.tags || []).includes(f)) return false;
+    return !q || [p.name, p.taxId].join(' ').toLowerCase().includes(q);
+  }
+  function sortPayees(a, b) { return (isFav(b.id) - isFav(a.id)) || String(b.lastUsed || '').localeCompare(String(a.lastUsed || '')) || a.name.localeCompare(b.name, 'th'); }
+  function renderPayees() {
+    if (S.pFilter == null || (S.pFilter === 'fav' && !favPayees().length)) S.pFilter = favPayees().length ? 'fav' : 'all';
+    renderTagBar('#pTags', S.pFilter, true);
+    const q = $('#pq').value.trim().toLowerCase();
+    const rows = S.payees.filter(p => payeeMatches(p, q, S.pFilter)).sort(sortPayees);
+    $('#pCards').innerHTML = rows.length ? rows.map(p => {
+      const d = p.defItem || {};
+      return `<div class="pc"><button type="button" class="star${isFav(p.id) ? ' on' : ''}" data-star="${esc(p.id)}" aria-label="${isFav(p.id) ? 'เอาออกจากรายการโปรด' : 'ตั้งเป็นรายการโปรด'}">${isFav(p.id) ? '★' : '☆'}</button>
+        <div class="pb"><b>${esc(p.name)}</b><small>${p.type === 'p' ? 'บุคคลธรรมดา' : 'นิติบุคคล'}${p.taxId ? ' · ' + esc(p.taxId) : ''}</small>
+        ${(p.tags || []).length ? `<span class="tagrow">${p.tags.map(tagChip).join('')}</span>` : ''}
+        ${d.desc || d.rate ? `<small>รายการประจำ: ${esc(d.desc || '')} ${d.rate ? esc(d.rate) + '%' : ''}</small>` : ''}</div>
+        <div class="pa"><button type="button" class="pri" data-use="${esc(p.id)}">ออกใบ</button><button type="button" class="ghost" data-pedit="${esc(p.id)}">แก้ไข</button></div></div>`;
+    }).join('') : `<div class="empty">${S.pFilter === 'fav' ? 'ยังไม่มีรายการโปรด — กด ☆ ที่รายชื่อเพื่อเพิ่ม' : S.payees.length ? 'ไม่พบรายชื่อที่ตรงกับตัวกรอง' : 'ยังไม่มีรายชื่อ — กด “+ เพิ่มรายชื่อ” หรือออกใบแล้วระบบจะเก็บรายชื่อให้เอง'}</div>`;
+    payeeList();
+  }
+  $('#pq').addEventListener('input', renderPayees);
+  $('#pTags').addEventListener('click', e => {
+    const b = e.target.closest('[data-t]'); if (!b) return;
+    if (b.dataset.t === 'manage') return tagManager();
+    S.pFilter = b.dataset.t; renderPayees();
+  });
+  $('#pNew').onclick = () => payeeForm(null);
+  $('#pCards').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.star) toggleFav(b.dataset.star);
+    else if (b.dataset.use) { const p = S.payees.find(x => x.id === b.dataset.use); D = blank(); applyPayee(p); go('edit'); }
+    else if (b.dataset.pedit) payeeForm(S.payees.find(x => x.id === b.dataset.pedit));
+  });
+  async function toggleFav(id) {
+    const on = !isFav(id), before = S.user.favs.slice();
+    S.user.favs = on ? [id].concat(before.filter(x => x !== id)) : before.filter(x => x !== id);
+    renderPayees(); renderFavStrip();
+    try { S.user.favs = await API.call('setFavorite', { payeeId: id, on }); saveCache(); toast(on ? '★ เพิ่มในรายการโปรดแล้ว' : 'เอาออกจากรายการโปรดแล้ว'); }
+    catch (e) { S.user.favs = before; renderPayees(); renderFavStrip(); toast(e.message); }
+  }
+  /** ใส่ข้อมูลผู้ถูกหักลงใบ + รายการประจำ (ถ้ามี) */
+  function applyPayee(p) {
+    if (!p) return;
+    Object.assign(D, { payeeId: p.id, payeeType: p.type, payeeName: p.name, payeeTaxId: p.taxId, payeeBranch: p.branch, payeeAddress: p.address,
+      form: p.form !== '' && p.form != null ? +p.form : (p.type === 'p' ? 3 : 6) });
+    const d = p.defItem || {};
+    const blankItems = D.items.every(it => !C.amt(it));
+    if ((d.desc || d.rate) && blankItems) D.items = [{ id: uid(), cat: d.cat || 'c5', desc: d.desc || '', date: todayISO(), amount: '', rate: d.rate || 3 }];
+    fillForm();
+  }
+  function openPicker() {
+    let f = favPayees().length ? 'fav' : 'all';
+    dialog(`<h3 style="margin:0">เลือกผู้ถูกหักภาษี</h3><input type="search" id="pkQ" placeholder="ค้นหาชื่อหรือเลขผู้เสียภาษี"><div class="chips tagbar" id="pkTags" style="margin:0"></div><div class="pick" id="pkList"></div><div class="row"><button type="button" class="ghost" data-close>ปิด</button></div>`);
+    const draw = () => {
+      renderTagBar('#pkTags', f, true); const m = $('#pkTags [data-t=manage]'); if (m) m.remove();
+      const q = $('#pkQ').value.trim().toLowerCase();
+      const rows = S.payees.filter(p => payeeMatches(p, q, f)).sort(sortPayees).slice(0, 100);
+      $('#pkList').innerHTML = rows.map(p => `<button type="button" data-pk="${esc(p.id)}"><span>${isFav(p.id) ? '<span style="color:#f2a900">★</span> ' : ''}<b>${esc(p.name)}</b></span><small>${esc(p.taxId || '')} ${(p.tags || []).map(id => (tagById(id) || {}).name).filter(Boolean).map(esc).join(' · ')}</small></button>`).join('') || '<p class="hint">ไม่พบรายชื่อ</p>';
+    };
+    draw();
+    $('#pkQ').oninput = draw;
+    $('#pkTags').onclick = e => { const b = e.target.closest('[data-t]'); if (b) { f = b.dataset.t; draw(); } };
+    $('#pkList').onclick = e => { const b = e.target.closest('[data-pk]'); if (!b) return; closeDlg(); applyPayee(S.payees.find(x => x.id === b.dataset.pk)); };
+  }
+  function payeeForm(p) {
+    const P = p ? clone(p) : { id: null, type: 'j', name: '', taxId: '', branch: '', address: '', tags: S.pFilter && !['fav', 'all'].includes(S.pFilter) ? [S.pFilter] : [], defItem: {}, form: '' };
+    const d = P.defItem || {};
+    const canDel = p && (isAdmin() || p.createdBy === S.user.id);
+    dialog(`<h3 style="margin:0">${p ? 'แก้ไขรายชื่อ' : 'เพิ่มรายชื่อผู้ถูกหักภาษี'}</h3>
+      <form id="pf" class="stackgap" autocomplete="off">
+        <div class="seg" id="pfType"><button type="button" data-v="j">นิติบุคคล</button><button type="button" data-v="p">บุคคลธรรมดา</button></div>
+        <label>ชื่อ<input id="pfName" required value="${esc(P.name)}"></label>
+        <div class="g2"><label>เลขผู้เสียภาษี (13 หลัก)<input id="pfTax" inputmode="numeric" maxlength="13" value="${esc(P.taxId)}"></label><label>สาขา<input id="pfBranch" value="${esc(P.branch)}" placeholder="สำนักงานใหญ่"></label></div>
+        <label>ที่อยู่<textarea id="pfAddr" rows="2">${esc(P.address)}</textarea></label>
+        <div><span class="hint">กลุ่ม / tag</span><div class="chips" id="pfTags" style="margin-top:6px"></div>
+          <div class="row" style="margin-top:8px"><input id="pfNewTag" placeholder="สร้างกลุ่มใหม่ เช่น ช่างภาพ" style="flex:1"><button type="button" id="pfAddTag">+ สร้าง</button></div></div>
+        <details${d.desc || d.rate ? ' open' : ''}><summary>รายการประจำ (เติมให้อัตโนมัติตอนออกใบ)</summary>
+          <div class="stackgap"><select id="pfCat">${C.CATS.map(c => `<option value="${c.k}"${(d.cat || 'c5') === c.k ? ' selected' : ''}>${esc(c.s)}</option>`).join('')}</select>
+          <div class="g2"><label>รายละเอียด<input id="pfDesc" value="${esc(d.desc || '')}" placeholder="เช่น ค่าบริการถ่ายภาพ"></label>
+          <label>อัตราหัก<select id="pfRate"><option value="">—</option>${C.RATES.map(r => `<option value="${r}"${+d.rate === r ? ' selected' : ''}>${r}%</option>`).join('')}</select></label></div></div>
+        </details>
+        <p class="err" id="pfErr" hidden></p>
+        <div class="row">${canDel ? '<button type="button" class="ghost danger" id="pfDel" style="margin-right:auto">ลบ</button>' : ''}<button type="button" class="ghost" data-close>ยกเลิก</button><button type="submit" class="pri" id="pfSave">บันทึก</button></div>
+      </form>`);
+    const drawType = () => $$('#pfType button').forEach(b => b.classList.toggle('on', b.dataset.v === P.type));
+    const drawTags = () => { $('#pfTags').innerHTML = S.tags.map(t => `<button type="button" data-tg="${esc(t.id)}" class="${P.tags.includes(t.id) ? 'on' : ''}"><i class="dot" style="background:${esc(t.color)}"></i> ${esc(t.name)}</button>`).join('') || '<span class="hint">ยังไม่มีกลุ่ม — สร้างได้ด้านล่าง</span>'; };
+    drawType(); drawTags();
+    $('#pfType').onclick = e => { const b = e.target.closest('button'); if (b) { P.type = b.dataset.v; drawType(); } };
+    $('#pfTags').onclick = e => { const b = e.target.closest('[data-tg]'); if (!b) return; const id = b.dataset.tg; P.tags = P.tags.includes(id) ? P.tags.filter(x => x !== id) : P.tags.concat(id); drawTags(); };
+    $('#pfAddTag').onclick = () => busy($('#pfAddTag'), '…', async () => {
+      const name = $('#pfNewTag').value.trim(); if (!name) return;
+      const t = await API.call('saveTag', { tag: { name } }); S.tags.push(t); P.tags.push(t.id); $('#pfNewTag').value = ''; drawTags(); saveCache();
+    });
+    $('#pfNewTag').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); $('#pfAddTag').click(); } };
+    if (canDel) $('#pfDel').onclick = async () => {
+      if (!await ask(`ลบรายชื่อ “${p.name}” ? (ใบที่ออกไปแล้วยังอยู่)`, 'ลบ')) return payeeForm(p);
+      try { await API.call('deletePayee', { id: p.id }); S.payees = S.payees.filter(x => x.id !== p.id); saveCache(); renderPayees(); renderFavStrip(); toast('ลบแล้ว'); } catch (err) { toast(err.message); }
+    };
+    $('#pf').onsubmit = e => {
+      e.preventDefault();
+      busy($('#pfSave'), 'กำลังบันทึก…', async () => {
+        Object.assign(P, { name: $('#pfName').value, taxId: $('#pfTax').value, branch: $('#pfBranch').value, address: $('#pfAddr').value,
+          defItem: { cat: $('#pfCat').value, desc: $('#pfDesc').value, rate: $('#pfRate').value } });
+        try {
+          const rec = await API.call('savePayee', { payee: P });
+          S.payees = S.payees.filter(x => x.id !== rec.id).concat(rec); saveCache(); closeDlg(); renderPayees(); renderFavStrip(); renderList(); toast('บันทึกรายชื่อแล้ว');
+        } catch (err) { showErr($('#pfErr'), err.message); }
+      });
+    };
+  }
+  function tagManager() {
+    const COLORS = ['#c4161c', '#d9480f', '#e67700', '#2b8a3e', '#0b7285', '#1c64d1', '#6741d9', '#a61e4d', '#495057'];
+    let color = COLORS[S.tags.length % COLORS.length];
+    dialog(`<h3 style="margin:0">จัดการกลุ่ม / tag</h3><div id="tmList"></div>
+      <div class="stackgap"><input id="tmName" placeholder="ชื่อกลุ่มใหม่ เช่น ช่างภาพ, ซื้อสินค้า"><div class="swatches" id="tmSw"></div>
+      <button type="button" class="pri" id="tmAdd">+ สร้างกลุ่ม</button></div>
+      <p class="hint">${isAdmin() ? 'ลบกลุ่มแล้ว รายชื่อในกลุ่มยังอยู่ แค่ไม่มี tag นั้น' : 'สร้างกลุ่มได้ทุกคน · เปลี่ยนชื่อ/ลบได้เฉพาะผู้ดูแลระบบ'}</p>
+      <div class="row"><button type="button" class="ghost" data-close>ปิด</button></div>`);
+    const draw = () => {
+      $('#tmList').innerHTML = S.tags.map(t => `<div class="tagedit"><i class="dot" style="background:${esc(t.color)};width:12px;height:12px"></i><b>${esc(t.name)}</b><small class="hint">${S.payees.filter(p => (p.tags || []).includes(t.id)).length} รายชื่อ</small>${isAdmin() ? `<button type="button" class="ghost" data-ren="${esc(t.id)}">เปลี่ยนชื่อ</button><button type="button" class="ghost danger" data-rm="${esc(t.id)}">ลบ</button>` : ''}</div>`).join('') || '<p class="hint">ยังไม่มีกลุ่ม</p>';
+      $('#tmSw').innerHTML = COLORS.map(c => `<button type="button" data-c="${c}" class="${c === color ? 'on' : ''}" style="background:${c}" aria-label="สี ${c}"></button>`).join('');
+    };
+    draw();
+    $('#tmSw').onclick = e => { const b = e.target.closest('[data-c]'); if (b) { color = b.dataset.c; draw(); } };
+    $('#tmAdd').onclick = () => busy($('#tmAdd'), 'กำลังสร้าง…', async () => {
+      const name = $('#tmName').value.trim(); if (!name) throw new Error('ใส่ชื่อกลุ่ม');
+      const t = await API.call('saveTag', { tag: { name, color } }); S.tags.push(t); $('#tmName').value = ''; color = COLORS[S.tags.length % COLORS.length]; saveCache(); draw(); renderPayees();
+    });
+    $('#tmList').onclick = async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.ren) {
+        const t = tagById(b.dataset.ren); const row = b.closest('.tagedit');
+        row.innerHTML = `<input value="${esc(t.name)}" style="flex:1"><button type="button" class="pri">บันทึก</button>`;
+        const inp = row.querySelector('input'); inp.focus();
+        row.querySelector('button').onclick = () => busy(row.querySelector('button'), '…', async () => {
+          const r = await API.call('saveTag', { tag: { id: t.id, name: inp.value, color: t.color } }); Object.assign(t, r); saveCache(); draw(); renderPayees(); renderList();
+        });
+      } else if (b.dataset.rm) {
+        const t = tagById(b.dataset.rm);
+        b.textContent = 'ยืนยันลบ?'; if (!b.dataset.armed) { b.dataset.armed = '1'; return; }
+        await busy(b, '…', async () => {
+          await API.call('deleteTag', { id: t.id }); S.tags = S.tags.filter(x => x.id !== t.id);
+          S.payees.forEach(p => { p.tags = (p.tags || []).filter(x => x !== t.id); });
+          if (S.pFilter === t.id) S.pFilter = 'all'; if (S.lTag === t.id) S.lTag = '';
+          saveCache(); draw(); renderPayees(); renderList();
+        });
+      }
+    };
+  }
+
   /* ================= settings ================= */
   function renderSettings() {
     const u = S.user; if (!u) return;
@@ -413,20 +601,9 @@
     $('#urlNow').textContent = API.url();
     sysInfo();
   }
-  function sysInfo(extra) {
-    const l = (extra && extra.loader) || {};
-    const rows = [['เวอร์ชันแอป (หน้าเว็บ)', CFG.VERSION], ['เวอร์ชันระบบ (backend)', API.backendVersion || '…']];
-    if (extra) {
-      rows.push(['Code.gs จาก', `${l.ref || '-'}${l.from ? ' · ' + ({ github: 'GitHub', cache: 'แคช', backup: 'ตัวสำรอง' }[l.from] || l.from) : ''}`]);
-      if (l.backupAt) rows.push(['สำรองล่าสุด', new Date(l.backupAt).toLocaleString('th-TH')]);
-      if (l.fetchError) rows.push(['หมายเหตุ', 'ดึงจาก GitHub ไม่ได้ ใช้ตัวสำรองอยู่']);
-      if (l.loaderVersion) rows.push(['Loader', 'v' + l.loaderVersion]);
-    }
-    $('#sysInfo').innerHTML = rows.map(r => `<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('');
-  }
+  function sysInfo() { $('#verNow').textContent = CFG.VERSION; }
   async function loadSystem() {
     renderSettings();
-    try { const p = await API.call('ping'); sysInfo(p); } catch (e) {}
     if (isAdmin()) { loadUsers(); loadTags(); }
   }
   $('#pwForm').addEventListener('submit', e => {
@@ -460,6 +637,7 @@
   }
   $('#userList').addEventListener('click', e => { const b = e.target.closest('[data-u]'); if (!b) return; uForm(S.users.find(x => x.id === b.dataset.u)); $('#uForm').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   $('#uClear').onclick = () => uForm(null);
+  uForm(null);
   $('#uForm').addEventListener('submit', e => {
     e.preventDefault();
     busy(e.submitter || $('#uForm .pri'), 'กำลังบันทึก…', async () => {
@@ -482,7 +660,7 @@
   $('#refSet').onclick = async () => {
     const ref = $('#refSel').value;
     if (!await ask(`เปลี่ยน backend ไปใช้เวอร์ชัน “${ref}” ?`, 'เปลี่ยน')) return;
-    busy($('#refSet'), 'กำลังเปลี่ยน…', async () => { const info = await API.call('setCodeRef', { ref }); const p = await API.call('ping'); sysInfo(p); toast('ใช้ backend เวอร์ชัน ' + info.ref + ' แล้ว'); });
+    busy($('#refSet'), 'กำลังเปลี่ยน…', async () => { const info = await API.call('setCodeRef', { ref }); toast('ใช้ backend เวอร์ชัน ' + info.ref + ' แล้ว'); });
   };
   $('#logBox').addEventListener('toggle', async e => {
     if (!e.target.open) return;
@@ -506,8 +684,8 @@
   async function updateSystem(btn) {
     const msg = $('#updMsg');
     await busy(btn, 'กำลังอัปเดต…', async () => {
-      msg.textContent = 'กำลังดึง backend ล่าสุดจาก GitHub…';
-      try { const j = await API.refreshBackend(); if (j && j.version) msg.textContent = 'backend เวอร์ชัน ' + j.version; } catch (e) { msg.textContent = 'อัปเดต backend ไม่สำเร็จ (จะใช้ตัวเดิม)'; }
+      msg.textContent = 'กำลังอัปเดต…';
+      try { await API.refreshBackend(); } catch (e) {}
       if ('serviceWorker' in navigator) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r => r.update().catch(() => {}))); }
       if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); }
       toast('อัปเดตแล้ว กำลังโหลดใหม่…');

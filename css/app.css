@@ -104,6 +104,36 @@ legend{font-weight:600;font-size:17px;padding:0;margin-bottom:8px}
 .mobile-only{margin-bottom:12px}
 .ed.m-form .pvwrap{display:none}.ed.m-preview #f{display:none}
 
+/* --- payees / tags --- */
+.tagbar{flex-wrap:nowrap;overflow-x:auto;margin:0 calc(-1*max(4vw,14px)) 12px;padding:0 max(4vw,14px) 2px;scrollbar-width:none}
+.tagbar::-webkit-scrollbar{display:none}
+.tagbar button{flex:none}
+.chips button.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+.tg{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;padding:2px 9px 2px 7px;border-radius:99px;background:var(--tint);color:var(--ink);white-space:nowrap}
+.tagrow{display:flex;flex-wrap:wrap;gap:4px}
+.pc{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;align-items:start}
+.pc .pb{display:grid;gap:4px}.pc .pb b{font-size:16px;line-height:1.35}.pc .pb small{color:var(--mute);font-size:13px}
+.pc .pa{grid-column:1/-1;display:flex;gap:8px;margin-top:6px}.pc .pa button{flex:1;min-height:42px}
+.star{width:44px;height:44px;min-height:44px;padding:0;border:0;background:none;font-size:26px;line-height:1;color:var(--line)}
+.star.on{color:#f2a900}
+.favstrip{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.favstrip::-webkit-scrollbar{display:none}
+.favstrip button{flex:none;min-height:38px;padding:4px 12px;border-radius:99px;font-size:14px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.favstrip .fv::before{content:"★ ";color:#f2a900}
+.pick{display:grid;gap:6px;max-height:50vh;overflow:auto}
+.pick button{justify-content:flex-start;text-align:left;display:grid;gap:2px;min-height:54px}
+.pick small{color:var(--mute);font-size:12.5px}
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.swatches button{width:34px;height:34px;min-height:34px;padding:0;border-radius:50%;border:3px solid transparent}
+.swatches button.on{border-color:var(--ink)}
+.tagedit{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.tagedit b{flex:1;font-weight:500}
+.tagedit button{min-height:36px;padding:4px 10px;font-size:14px}
+.ver{font-size:15px;margin:0 0 12px}.ver b{font-size:20px}
+.advanced summary{font-weight:600;color:var(--ink);font-size:16px}
+.advanced h3{margin:10px 0 8px}
+
 /* --- companies / settings --- */
 .cog,.setgrid{display:grid;gap:16px;align-items:start}
 .rowhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.rowhead h2{margin:0}

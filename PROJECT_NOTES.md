@@ -7,7 +7,9 @@
 - ออกในนามได้หลายบริษัท (สลับจากเมนูบนสุด)
 - เลือกอัตราหักต่อรายการ (1, 1.5, 2, 3, 5, 10, 15% หรือกำหนดเอง) + ปุ่มลัด + ถอด VAT 7%
 - ใส่ลายเซ็น (วาด/อัปโหลด) และตรายาง ลงบนเอกสาร
-- บันทึกเอกสาร ค้นหา กรองตามเดือน สรุปยอดภาษี
+- บันทึกเอกสาร ค้นหา กรองตามเดือนและตามกลุ่ม สรุปยอดภาษี
+- รายชื่อผู้ถูกหักภาษี (แท็บ ★ รายชื่อ): ดาว = รายการโปรด (แยกของแต่ละคน), ติด tag/กลุ่ม เช่น ช่างภาพ ซื้อสินค้า,
+  รายการประจำ (ประเภทเงินได้ + รายละเอียด + อัตรา) เติมให้อัตโนมัติตอนออกใบ; ในหน้าออกใบมีแถบรายชื่อโปรดให้แตะเลือก
 - ส่งออก PDF (ฉบับที่ 1, 2 หรือทั้งคู่) / PNG — มือถือใช้เมนูแชร์
 - ล็อกอินพนักงาน สิทธิ์ `admin` / `user`
 - PWA ติดตั้งบน iPhone ได้
@@ -35,7 +37,7 @@ Apps Script Web App  …/exec
 | `js/config.js` | `VERSION`, `API_URL` (URL /exec), `REPO` |
 | `js/api.js` | เรียก backend, เก็บ token/แคชใน localStorage (`hugna_*`) |
 | `js/cert.js` | สร้าง HTML ใบ 50 ทวิ, จำนวนเงินเป็นตัวอักษรไทย, ส่งออก PDF/PNG (html2canvas 1.4.1 + jsPDF 2.5.1 โหลดจาก cdnjs ตอนกดส่งออก) |
-| `js/app.js` | UI ทั้งหมด: routing ด้วย hash `#list #edit #companies #settings` |
+| `js/app.js` | UI ทั้งหมด: routing ด้วย hash `#list #edit #payees #companies #settings` |
 | `sw.js` | service worker: หน้าเว็บ network-first, ไฟล์ที่มี ?v= cache-first, ไม่แคช API |
 | `manifest.json`, `icons/` | PWA |
 | `version.json` | เวอร์ชันล่าสุด — แอปเช็กไฟล์นี้เพื่อขึ้นแถบ "มีเวอร์ชันใหม่" |
@@ -46,10 +48,13 @@ Apps Script Web App  …/exec
 | `CHANGELOG.md` | บันทึกการแก้ไขทุกเวอร์ชัน |
 
 ## ข้อมูลใน Google Sheet
-- **Users**: id, username, name, role(admin/user), passHash, salt, active, createdAt, lastLogin — รหัสผ่าน SHA-256 + salt วน 300 รอบ
+- **Users**: id, username, name, role(admin/user), passHash, salt, active, createdAt, lastLogin, favs(JSON: payeeId ที่ติดดาว) — รหัสผ่าน SHA-256 + salt วน 300 รอบ
 - **Sessions**: token, userId, expires (30 วัน), createdAt — แคชใน CacheService 30 นาที
 - **Companies**: id, name, taxId, branch, address, signer, signerTitle, sigFileId, stampFileId, active, createdAt, updatedAt (ลบ = active false)
-- **Certs**: id, companyId, book, no, issueDate, form(0–6), seq, payeeType(j/p), payeeName, payeeTaxId, payeeBranch, payeeAddress, payer(0–3), payerOther, items(JSON), funds(JSON), totalAmount, totalTax, useSig, useStamp, coSnap(JSON สำเนาข้อมูลบริษัทตอนออกครั้งแรก), status(active/deleted), createdBy, createdByName, createdAt, updatedAt
+- **Payees**: id, type(j/p), name, taxId, branch, address, tags(JSON tagIds), defItem(JSON {cat,desc,rate}), form, active, createdBy, createdAt, updatedAt, lastUsed
+  - ตอนบันทึกใบ backend ผูกใบกับรายชื่อ (payeeId → เลขภาษี+สาขา → ชื่อ) ถ้าไม่เจอจะสร้างรายชื่อใหม่ให้
+- **Tags**: id, name, color (สีจากชุด TAG_COLORS), createdAt
+- **Certs**: id, companyId, payeeId, book, no, issueDate, form(0–6), seq, payeeType(j/p), payeeName, payeeTaxId, payeeBranch, payeeAddress, payer(0–3), payerOther, items(JSON), funds(JSON), totalAmount, totalTax, useSig, useStamp, coSnap(JSON สำเนาข้อมูลบริษัทตอนออกครั้งแรก), status(active/deleted), createdBy, createdByName, createdAt, updatedAt
   - items: `[{id, cat:'c1'|'c2'|'c3'|'c4a'|'c4b'|'c5'|'c6', desc, date, amount, rate, custom?}]`
 - **Settings**: key/value (สำรองไว้ใช้)
 - **Log**: time, userId, username, action, detail
@@ -58,8 +63,8 @@ Apps Script Web App  …/exec
 
 ## API (action)
 - สาธารณะ: `ping`, `status` (needsSetup), `setup` (สร้าง admin แรก), `login`
-- ล็อกอินแล้ว: `me`, `logout`, `bootstrap` (user+companies+certs), `image` (fileId → dataURL), `saveCert`, `deleteCert`, `changePassword`
-- admin: `saveCompany` (sig/stamp: undefined=ไม่เปลี่ยน, null=ลบ, dataURL=ใหม่), `deleteCompany`, `users`, `saveUser`, `log`, `system`, `setCodeRef`
+- ล็อกอินแล้ว: `me`, `logout`, `bootstrap` (user+companies+certs+payees+tags), `savePayee`, `deletePayee` (ของตัวเอง/admin), `setFavorite`, `saveTag` (สร้างได้ทุกคน, แก้ได้เฉพาะ admin), `image` (fileId → dataURL), `saveCert`, `deleteCert`, `changePassword`
+- admin: `deleteTag`, `saveCompany` (sig/stamp: undefined=ไม่เปลี่ยน, null=ลบ, dataURL=ใหม่), `deleteCompany`, `users`, `saveUser`, `log`, `system`, `setCodeRef`
 - สิทธิ์ user: แก้/ลบเฉพาะใบที่ตัวเองออก; admin ทำได้ทุกอย่าง
 - เลขที่เอกสาร: ถ้าเว้นว่าง backend รันให้ (ต่อบริษัท+เล่ม) ภายใต้ LockService และกันเลขซ้ำ
 
@@ -84,6 +89,7 @@ Apps Script Web App  …/exec
 - `bootstrap` ส่งเอกสารทั้งหมด — ถ้าเกินหลายพันใบ ควรทำแบ่งหน้า/กรองตามปีฝั่ง backend
 
 ## สถานะล่าสุด
+- v1.1.0 (2026-11-25): เพิ่มรายชื่อผู้ถูกหักภาษี + ดาว + tag/กลุ่ม, หน้าตั้งค่าส่วนระบบเหลือแค่เลขเวอร์ชัน+ปุ่มอัปเดต (ย้อน backend/Log ย้ายไป "ขั้นสูง")
 - v1.0.1 (2026-11-25): ผู้ใช้ทำ SETUP.md ครบแล้ว (เปิด Pages, สร้างชีต, วาง Loader, Deploy)
 - `API_URL` = https://script.google.com/macros/s/AKfycbzkiifhCDfL4DgNFxz1zuNsFn9aGKfEUKRd_ZMjG1NSiEo0uVCixl40A1v188eqh-WU/exec
 - หน้าเว็บ: https://jsungkapo.github.io/Hugna/ (ชื่อ repo ขึ้นต้น H ใหญ่ — path ของ Pages แยกตัวพิมพ์)
@@ -94,4 +100,3 @@ Apps Script Web App  …/exec
 ## ไอเดียทำต่อ
 - ส่งออกรายงานรายเดือนสำหรับยื่น ภ.ง.ด.3/53 (Excel/CSV)
 - ส่งใบให้ผู้ถูกหักทางอีเมล (ต้องเพิ่ม GmailApp → วาง Loader ใหม่)
-- สมุดรายชื่อผู้ถูกหักภาษีแยกแท็บ

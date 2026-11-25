@@ -9,22 +9,26 @@
  * --------------------------------------------------------------
  */
 var HUGNA_BACKEND = true;
-var VERSION = '1.0.1';
+var VERSION = '1.1.0';
 
 var SESSION_DAYS = 30;
 var HASH_ROUNDS = 300;
 
 var SCHEMA = {
-  Users:     ['id', 'username', 'name', 'role', 'passHash', 'salt', 'active', 'createdAt', 'lastLogin'],
+  Users:     ['id', 'username', 'name', 'role', 'passHash', 'salt', 'active', 'createdAt', 'lastLogin', 'favs'],
   Sessions:  ['token', 'userId', 'expires', 'createdAt'],
   Companies: ['id', 'name', 'taxId', 'branch', 'address', 'signer', 'signerTitle', 'sigFileId', 'stampFileId', 'active', 'createdAt', 'updatedAt'],
-  Certs:     ['id', 'companyId', 'book', 'no', 'issueDate', 'form', 'seq', 'payeeType', 'payeeName', 'payeeTaxId', 'payeeBranch',
+  Certs:     ['id', 'companyId', 'payeeId', 'book', 'no', 'issueDate', 'form', 'seq', 'payeeType', 'payeeName', 'payeeTaxId', 'payeeBranch',
               'payeeAddress', 'payer', 'payerOther', 'items', 'funds', 'totalAmount', 'totalTax', 'useSig', 'useStamp', 'coSnap',
               'status', 'createdBy', 'createdByName', 'createdAt', 'updatedAt'],
+  Payees:    ['id', 'type', 'name', 'taxId', 'branch', 'address', 'tags', 'defItem', 'form', 'active', 'createdBy', 'createdAt', 'updatedAt', 'lastUsed'],
+  Tags:      ['id', 'name', 'color', 'createdAt'],
   Settings:  ['key', 'value'],
   Log:       ['time', 'userId', 'username', 'action', 'detail']
 };
-var JSON_FIELDS = { items: 1, funds: 1, coSnap: 1 };
+var JSON_FIELDS = { items: 1, funds: 1, coSnap: 1, tags: 1, defItem: 1, favs: 1 };
+var JSON_ARRAYS = { items: 1, tags: 1, favs: 1 };
+var TAG_COLORS = ['#c4161c', '#d9480f', '#e67700', '#2b8a3e', '#0b7285', '#1c64d1', '#6741d9', '#a61e4d', '#495057'];
 
 /* ================= entry points ================= */
 function doGet(e) { return respond_((e && e.parameter) || {}); }
@@ -45,7 +49,7 @@ function respond_(req) {
 }
 
 var PUBLIC = { ping: 1, status: 1, setup: 1, login: 1 };
-var ADMIN = { saveCompany: 1, deleteCompany: 1, users: 1, saveUser: 1, log: 1, setCodeRef: 1, system: 1 };
+var ADMIN = { saveCompany: 1, deleteCompany: 1, users: 1, saveUser: 1, log: 1, setCodeRef: 1, system: 1, deleteTag: 1 };
 
 function dispatch_(req) {
   var action = String(req.action || 'ping');
@@ -109,7 +113,11 @@ var API = {
   bootstrap: function (req, user) {
     var companies = rows_('Companies').filter(function (c) { return String(c.active) !== 'false'; }).map(cleanCompany_);
     var certs = rows_('Certs').filter(function (c) { return c.status !== 'deleted'; }).map(cleanCert_);
-    return { user: user, companies: companies, certs: certs, version: VERSION };
+    var payees = rows_('Payees').filter(function (p) { return String(p.active) !== 'false'; }).map(cleanPayee_);
+    var tags = rows_('Tags').map(function (t) { return { id: t.id, name: t.name, color: t.color }; });
+    var me = rows_('Users').filter(function (u) { return u.id === user.id; })[0];
+    var u = me ? cleanUser_(me) : user;
+    return { user: u, companies: companies, certs: certs, payees: payees, tags: tags, version: VERSION };
   },
 
   /** รูปลายเซ็น/ตรายาง (ส่งเป็น data URL) */
@@ -143,9 +151,10 @@ var API = {
         var a = round2_(num_(it.amount)), t = round2_(a * num_(it.rate) / 100);
         totalAmount += a; totalTax += t;
       });
+      var payeeId = upsertPayee_(c, user);
       var rec = {
         id: existing ? existing.id : Utilities.getUuid(),
-        companyId: c.companyId, book: book, no: no, issueDate: str_(c.issueDate, 10), form: num_(c.form), seq: str_(c.seq, 20),
+        companyId: c.companyId, payeeId: payeeId, book: book, no: no, issueDate: str_(c.issueDate, 10), form: num_(c.form), seq: str_(c.seq, 20),
         payeeType: c.payeeType === 'p' ? 'p' : 'j', payeeName: str_(c.payeeName, 200), payeeTaxId: digits_(c.payeeTaxId),
         payeeBranch: str_(c.payeeBranch, 60), payeeAddress: str_(c.payeeAddress, 400), payer: num_(c.payer),
         payerOther: str_(c.payerOther, 100), items: items, funds: c.funds || {},
@@ -206,6 +215,87 @@ var API = {
       if (!c) throw err_('ไม่พบบริษัท');
       update_('Companies', 'id', c.id, { active: false, updatedAt: now_() });
       log_(user, 'deleteCompany', c.name);
+      return true;
+    });
+  },
+
+  /* ---------- รายชื่อผู้ถูกหักภาษี ---------- */
+  savePayee: function (req, user) {
+    var p = req.payee || {};
+    if (!String(p.name || '').trim()) throw err_('ใส่ชื่อผู้ถูกหักภาษี');
+    return withLock_(function () {
+      var all = rows_('Payees').filter(function (x) { return String(x.active) !== 'false'; });
+      var existing = p.id ? all.filter(function (x) { return x.id === p.id; })[0] : null;
+      var taxId = digits_(p.taxId), name = str_(p.name, 200);
+      var branch = str_(p.branch, 60);
+      var dup = all.filter(function (x) {
+        if (existing && x.id === existing.id) return false;
+        return taxId ? (String(x.taxId) === taxId && String(x.branch || '') === branch) : x.name === name;
+      })[0];
+      if (dup) throw err_('มีรายชื่อนี้อยู่แล้ว: ' + dup.name, 'duplicate');
+      var tagIds = validTags_(p.tags);
+      var rec = {
+        id: existing ? existing.id : Utilities.getUuid(), type: p.type === 'p' ? 'p' : 'j', name: name, taxId: taxId,
+        branch: branch, address: str_(p.address, 400), tags: tagIds, defItem: cleanDefItem_(p.defItem),
+        form: p.form === '' || p.form == null ? '' : num_(p.form), active: true,
+        createdBy: existing ? existing.createdBy : user.id, createdAt: existing ? existing.createdAt : now_(),
+        updatedAt: now_(), lastUsed: existing ? existing.lastUsed : ''
+      };
+      if (existing) update_('Payees', 'id', rec.id, rec); else append_('Payees', rec);
+      log_(user, existing ? 'editPayee' : 'newPayee', rec.name);
+      return cleanPayee_(rec);
+    });
+  },
+
+  deletePayee: function (req, user) {
+    return withLock_(function () {
+      var p = rows_('Payees').filter(function (x) { return x.id === req.id; })[0];
+      if (!p) throw err_('ไม่พบรายชื่อ');
+      if (user.role !== 'admin' && p.createdBy !== user.id) throw err_('ลบได้เฉพาะรายชื่อที่คุณเพิ่มเอง', 'forbidden');
+      update_('Payees', 'id', p.id, { active: false, updatedAt: now_() });
+      log_(user, 'deletePayee', p.name);
+      return true;
+    });
+  },
+
+  /** ดาว (รายการโปรด) — แยกของแต่ละคน */
+  setFavorite: function (req, user) {
+    return withLock_(function () {
+      var me = rows_('Users').filter(function (u) { return u.id === user.id; })[0];
+      var favs = (me.favs || []).filter(function (id) { return id !== req.payeeId; });
+      if (req.on) favs.unshift(String(req.payeeId));
+      update_('Users', 'id', me.id, { favs: favs.slice(0, 200) });
+      CacheService.getScriptCache().remove('sess_' + req.token);
+      return favs;
+    });
+  },
+
+  saveTag: function (req, user) {
+    var t = req.tag || {};
+    var name = str_(t.name, 40);
+    if (!name) throw err_('ใส่ชื่อกลุ่ม/tag');
+    return withLock_(function () {
+      var all = rows_('Tags');
+      var existing = t.id ? all.filter(function (x) { return x.id === t.id; })[0] : null;
+      if (existing && user.role !== 'admin') throw err_('แก้ไขกลุ่มได้เฉพาะผู้ดูแลระบบ', 'forbidden');
+      if (all.some(function (x) { return x.name === name && (!existing || x.id !== existing.id); })) throw err_('มีกลุ่มชื่อนี้แล้ว', 'duplicate');
+      var color = TAG_COLORS.indexOf(t.color) >= 0 ? t.color : TAG_COLORS[all.length % TAG_COLORS.length];
+      var rec = { id: existing ? existing.id : Utilities.getUuid(), name: name, color: color, createdAt: existing ? existing.createdAt : now_() };
+      if (existing) update_('Tags', 'id', rec.id, rec); else append_('Tags', rec);
+      log_(user, existing ? 'editTag' : 'newTag', name);
+      return { id: rec.id, name: rec.name, color: rec.color };
+    });
+  },
+
+  deleteTag: function (req, user) {
+    return withLock_(function () {
+      var t = rows_('Tags').filter(function (x) { return x.id === req.id; })[0];
+      if (!t) throw err_('ไม่พบกลุ่ม');
+      rows_('Payees').forEach(function (p) {
+        if ((p.tags || []).indexOf(t.id) >= 0) update_('Payees', 'id', p.id, { tags: p.tags.filter(function (x) { return x !== t.id; }) });
+      });
+      deleteRow_('Tags', t._row);
+      log_(user, 'deleteTag', t.name);
       return true;
     });
   },
@@ -321,7 +411,7 @@ function hash_(pw, salt) {
 function normUser_(u) { return String(u || '').trim().toLowerCase(); }
 function cleanUser_(u) {
   return { id: u.id, username: u.username, name: u.name, role: u.role, active: String(u.active) !== 'false',
-           createdAt: u.createdAt, lastLogin: u.lastLogin };
+           createdAt: u.createdAt, lastLogin: u.lastLogin, favs: Array.isArray(u.favs) ? u.favs : [] };
 }
 
 /* ================= data helpers ================= */
@@ -369,7 +459,7 @@ function rows_(name) {
       if (!head[j]) continue;
       var v = vals[i][j];
       if (v instanceof Date) v = v.toISOString();
-      if (JSON_FIELDS[head[j]]) { try { v = v ? JSON.parse(v) : (head[j] === 'items' ? [] : {}); } catch (x) { v = {}; } }
+      if (JSON_FIELDS[head[j]]) { try { v = v ? JSON.parse(v) : (JSON_ARRAYS[head[j]] ? [] : {}); } catch (x) { v = JSON_ARRAYS[head[j]] ? [] : {}; } }
       o[head[j]] = v;
     }
     out.push(o);
@@ -379,7 +469,7 @@ function rows_(name) {
 function toRow_(head, obj, base) {
   return head.map(function (h, j) {
     var v = obj.hasOwnProperty(h) ? obj[h] : (base ? base[j] : '');
-    if (JSON_FIELDS[h] && typeof v !== 'string') v = JSON.stringify(v || (h === 'items' ? [] : {}));
+    if (JSON_FIELDS[h] && typeof v !== 'string') v = JSON.stringify(v || (JSON_ARRAYS[h] ? [] : {}));
     if (v === undefined || v === null) v = '';
     // กันสูตรชีต (formula injection) และให้เลขที่/เลขภาษีเป็นข้อความ
     if (typeof v === 'string' && /^[=+\-@]/.test(v)) v = "'" + v;
@@ -424,6 +514,42 @@ function saveImage_(dataUrl, name) {
   if (bytes.length > 1500000) throw err_('รูปใหญ่เกินไป');
   var blob = Utilities.newBlob(bytes, m[1], name + '.' + (m[2] === 'jpeg' ? 'jpg' : m[2]));
   return folder_().createFile(blob).getId();
+}
+
+/* ================= payees ================= */
+function cleanPayee_(p) {
+  return { id: p.id, type: p.type === 'p' ? 'p' : 'j', name: p.name, taxId: String(p.taxId || ''), branch: String(p.branch || ''),
+           address: p.address || '', tags: p.tags || [], defItem: p.defItem || {}, form: p.form === '' || p.form == null ? '' : num_(p.form),
+           createdBy: p.createdBy, updatedAt: p.updatedAt, lastUsed: p.lastUsed || '' };
+}
+function validTags_(ids) {
+  var known = {}; rows_('Tags').forEach(function (t) { known[t.id] = 1; });
+  return (ids || []).map(String).filter(function (id, i, a) { return known[id] && a.indexOf(id) === i; });
+}
+function cleanDefItem_(d) {
+  d = d || {};
+  if (!d.cat && !d.desc && !d.rate) return {};
+  return { cat: /^c(1|2|3|4a|4b|5|6)$/.test(d.cat) ? d.cat : 'c5', desc: str_(d.desc, 120), rate: num_(d.rate) };
+}
+/** ตอนบันทึกใบ: ผูกกับรายชื่อเดิม หรือสร้างรายชื่อใหม่ให้อัตโนมัติ */
+function upsertPayee_(c, user) {
+  var all = rows_('Payees').filter(function (x) { return String(x.active) !== 'false'; });
+  var taxId = digits_(c.payeeTaxId), name = str_(c.payeeName, 200), branch = str_(c.payeeBranch, 60);
+  var p = (c.payeeId && all.filter(function (x) { return x.id === c.payeeId; })[0]) ||
+          (taxId && all.filter(function (x) { return String(x.taxId) === taxId && String(x.branch || '') === branch; })[0]) ||
+          all.filter(function (x) { return x.name === name; })[0];
+  if (p) {
+    var patch = { lastUsed: now_() };
+    if (!p.taxId && taxId) patch.taxId = taxId;
+    if (!p.address && c.payeeAddress) patch.address = str_(c.payeeAddress, 400);
+    update_('Payees', 'id', p.id, patch);
+    return p.id;
+  }
+  var rec = { id: Utilities.getUuid(), type: c.payeeType === 'p' ? 'p' : 'j', name: name, taxId: taxId, branch: branch,
+              address: str_(c.payeeAddress, 400), tags: [], defItem: {}, form: num_(c.form), active: true,
+              createdBy: user.id, createdAt: now_(), updatedAt: now_(), lastUsed: now_() };
+  append_('Payees', rec);
+  return rec.id;
 }
 
 /* ================= misc ================= */

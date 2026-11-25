@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/app.css?v=1.0.1">
+<link rel="stylesheet" href="css/app.css?v=1.1.0">
 </head>
 <body>
 
@@ -69,6 +69,7 @@
   <nav class="nav" id="nav">
     <a href="#list" data-v="list"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg><span>เอกสาร</span></a>
     <a href="#edit" data-v="edit"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>ออกใบใหม่</span></a>
+    <a href="#payees" data-v="payees"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg><span>รายชื่อ</span></a>
     <a href="#companies" data-v="companies" class="adm"><svg viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M9 20v-6h6v6"/></svg><span>บริษัท</span></a>
     <a href="#settings" data-v="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/></svg><span>ตั้งค่า</span></a>
   </nav>
@@ -80,8 +81,16 @@
         <input id="q" type="search" placeholder="ค้นหาชื่อ เลขที่ หรือเลขผู้เสียภาษี" aria-label="ค้นหา">
         <input id="mon" type="month" aria-label="เดือนที่ออก">
       </div>
+      <div class="chips tagbar" id="lTags"></div>
       <div class="kpis" id="kpis"></div>
       <div class="cards" id="certCards"></div>
+    </section>
+
+    <!-- รายชื่อผู้ถูกหักภาษี -->
+    <section class="view" id="v-payees">
+      <div class="filters"><input id="pq" type="search" placeholder="ค้นหาชื่อหรือเลขผู้เสียภาษี" aria-label="ค้นหารายชื่อ"><button type="button" class="pri" id="pNew">+ เพิ่มรายชื่อ</button></div>
+      <div class="chips tagbar" id="pTags"></div>
+      <div class="cards" id="pCards"></div>
     </section>
 
     <!-- ออกใบ / แก้ไข -->
@@ -95,6 +104,7 @@
             <div class="g3"><label>เล่มที่<input data-k="book" inputmode="numeric"></label><label>เลขที่<input data-k="no" id="noIn" inputmode="numeric"></label><label>วันที่ออก<input type="date" data-k="issueDate"></label></div>
           </fieldset>
           <fieldset><legend>ผู้ถูกหักภาษี</legend>
+            <div class="favstrip" id="favStrip"></div>
             <div class="seg" id="ptype"><button type="button" data-v="j">นิติบุคคล</button><button type="button" data-v="p">บุคคลธรรมดา</button></div>
             <label>ชื่อ<input data-k="payeeName" list="payees" placeholder="เช่น บริษัท ตัวอย่าง จำกัด"></label>
             <datalist id="payees"></datalist>
@@ -180,7 +190,7 @@
 
         <div class="pane">
           <h2>ระบบ</h2>
-          <dl class="kv" id="sysInfo"></dl>
+          <p class="ver">เวอร์ชัน <b id="verNow"></b></p>
           <div class="row"><button type="button" class="pri" id="updSys">อัปเดตระบบเป็นเวอร์ชันล่าสุด</button></div>
           <p class="hint" id="updMsg"></p>
           <details id="iosHelp"><summary>ติดตั้งเป็นแอปบน iPhone</summary>
@@ -205,13 +215,13 @@
           </form>
         </div>
 
-        <div class="pane adm">
-          <h2>เวอร์ชัน backend และประวัติ</h2>
-          <p class="hint">เลือกเวอร์ชัน Code.gs ที่ระบบใช้ — ใช้ย้อนกลับเมื่ออัปเดตแล้วมีปัญหา</p>
+        <details class="pane adm advanced">
+          <summary>ขั้นสูง (ผู้ดูแลระบบ)</summary>
+          <h3>ย้อนเวอร์ชัน backend</h3>
           <div class="g2"><label>เวอร์ชัน<select id="refSel"><option value="main">main (ล่าสุด)</option></select></label><div style="align-self:end"><button type="button" id="refSet">ใช้เวอร์ชันนี้</button></div></div>
           <details id="logBox"><summary>บันทึกการใช้งานล่าสุด</summary><div id="logList" class="loglist"></div></details>
           <p class="hint" id="sysLinks"></p>
-        </div>
+        </details>
       </div>
     </section>
   </main>
@@ -220,9 +230,9 @@
 <div class="ov" id="ov" hidden><div class="dlg" id="dlg"></div></div>
 <div class="toast" id="toast" role="status"></div>
 
-<script src="js/config.js?v=1.0.1"></script>
-<script src="js/api.js?v=1.0.1"></script>
-<script src="js/cert.js?v=1.0.1"></script>
-<script src="js/app.js?v=1.0.1"></script>
+<script src="js/config.js?v=1.1.0"></script>
+<script src="js/api.js?v=1.1.0"></script>
+<script src="js/cert.js?v=1.1.0"></script>
+<script src="js/app.js?v=1.1.0"></script>
 </body>
 </html>
