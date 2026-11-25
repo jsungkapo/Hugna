@@ -84,10 +84,12 @@ Apps Script Web App  …/exec
 - `bootstrap` ส่งเอกสารทั้งหมด — ถ้าเกินหลายพันใบ ควรทำแบ่งหน้า/กรองตามปีฝั่ง backend
 
 ## สถานะล่าสุด
-- v1.0.0 (2026-11-25): โครงระบบครบ รอผู้ใช้ทำ SETUP.md ขั้น 1–6
-- `js/config.js` → `API_URL` ยังว่าง (รอ URL /exec จากผู้ใช้)
+- v1.0.1 (2026-11-25): ผู้ใช้ทำ SETUP.md ครบแล้ว (เปิด Pages, สร้างชีต, วาง Loader, Deploy)
+- `API_URL` = https://script.google.com/macros/s/AKfycbzkiifhCDfL4DgNFxz1zuNsFn9aGKfEUKRd_ZMjG1NSiEo0uVCixl40A1v188eqh-WU/exec
+- หน้าเว็บ: https://jsungkapo.github.io/Hugna/ (ชื่อ repo ขึ้นต้น H ใหญ่ — path ของ Pages แยกตัวพิมพ์)
+- เซสชันของ Claude push ได้เฉพาะ branch main — push tag ไม่ได้ ให้ผู้ใช้สร้าง tag ผ่านหน้า Releases (https://github.com/jsungkapo/Hugna/releases/new, target = main)
 - ทดสอบแล้ว: backend ด้วย mock ของ Apps Script ใน Node, หน้าเว็บด้วย Chrome headless (มือถือ/คอม)
-- ยังไม่ได้ทดสอบกับ Apps Script จริง และการส่งออก PDF บน iPhone จริง
+- ยังไม่ได้ยืนยัน: การทำงานกับ Apps Script จริง และการส่งออก PDF บน iPhone จริง
 
 ## ไอเดียทำต่อ
 - ส่งออกรายงานรายเดือนสำหรับยื่น ภ.ง.ด.3/53 (Excel/CSV)
