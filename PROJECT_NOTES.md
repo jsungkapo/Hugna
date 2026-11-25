@@ -11,6 +11,8 @@
 - รายชื่อผู้ถูกหักภาษี (แท็บ ★ รายชื่อ): ดาว = รายการโปรด (แยกของแต่ละคน), ติด tag/กลุ่ม เช่น ช่างภาพ ซื้อสินค้า,
   รายการประจำ (ประเภทเงินได้ + รายละเอียด + อัตรา) เติมให้อัตโนมัติตอนออกใบ; ในหน้าออกใบมีแถบรายชื่อโปรดให้แตะเลือก
 - ส่งออก PDF (ฉบับที่ 1, 2 หรือทั้งคู่) / PNG — มือถือใช้เมนูแชร์
+- สแกนรูป (ถ่าย/เลือกรูป) → อ่านข้อความ → แยก ชื่อ, เลขผู้เสียภาษี (ตรวจ checksum), สาขา, ที่อยู่, ยอดเงิน (ก่อน VAT/ยอดรวม/VAT/หัก ณ ที่จ่าย), วันที่
+  เลือกแล้วกด "ใส่ลงใบ" หรือ "สร้างรายชื่อ"; แตะคัดลอกทีละช่อง/ทีละบรรทัด/ทั้งหมด; ตัดข้อมูลของบริษัทเราเองออก (ติดป้าย "บริษัทของเรา")
 - ล็อกอินพนักงาน สิทธิ์ `admin` / `user`
 - PWA ติดตั้งบน iPhone ได้
 
@@ -37,6 +39,7 @@ Apps Script Web App  …/exec
 | `js/config.js` | `VERSION`, `API_URL` (URL /exec), `REPO` |
 | `js/api.js` | เรียก backend, เก็บ token/แคชใน localStorage (`hugna_*`) |
 | `js/cert.js` | สร้าง HTML ใบ 50 ทวิ, จำนวนเงินเป็นตัวอักษรไทย, ส่งออก PDF/PNG (html2canvas 1.4.1 + jsPDF 2.5.1 โหลดจาก cdnjs ตอนกดส่งออก) |
+| `js/scan.js` | OCR: ย่อรูป → backend `ocr` (Google Drive OCR) → ถ้าไม่ได้ใช้ Tesseract.js 5.1.1 (tha+eng จาก jsdelivr/tessdata) ในเครื่อง; `parse()` แยกข้อมูล |
 | `js/app.js` | UI ทั้งหมด: routing ด้วย hash `#list #edit #payees #companies #settings` |
 | `sw.js` | service worker: หน้าเว็บ network-first, ไฟล์ที่มี ?v= cache-first, ไม่แคช API |
 | `manifest.json`, `icons/` | PWA |
@@ -64,6 +67,8 @@ Apps Script Web App  …/exec
 ## API (action)
 - สาธารณะ: `ping`, `status` (needsSetup), `setup` (สร้าง admin แรก), `login`
 - ล็อกอินแล้ว: `me`, `logout`, `bootstrap` (user+companies+certs+payees+tags), `savePayee`, `deletePayee` (ของตัวเอง/admin), `setFavorite`, `saveTag` (สร้างได้ทุกคน, แก้ได้เฉพาะ admin), `image` (fileId → dataURL), `saveCert`, `deleteCert`, `changePassword`
+- `ocr` (image dataURL → text): อัปโหลดรูปเป็น Google Doc ด้วย Drive REST (`ocrLanguage=th`) ผ่าน `ScriptApp.getOAuthToken()` แล้ว export text และลบไฟล์ทิ้ง
+  ต้องเปิด Advanced Service "Drive API" ในโปรเจกต์ Apps Script (SETUP.md ขั้นเสริม) ไม่งั้นได้ code `ocr_unavailable` → หน้าเว็บจำไว้ 6 ชม. แล้วอ่านในเครื่องแทน
 - admin: `deleteTag`, `saveCompany` (sig/stamp: undefined=ไม่เปลี่ยน, null=ลบ, dataURL=ใหม่), `deleteCompany`, `users`, `saveUser`, `log`, `system`, `setCodeRef`
 - สิทธิ์ user: แก้/ลบเฉพาะใบที่ตัวเองออก; admin ทำได้ทุกอย่าง
 - เลขที่เอกสาร: ถ้าเว้นว่าง backend รันให้ (ต่อบริษัท+เล่ม) ภายใต้ LockService และกันเลขซ้ำ
@@ -89,6 +94,8 @@ Apps Script Web App  …/exec
 - `bootstrap` ส่งเอกสารทั้งหมด — ถ้าเกินหลายพันใบ ควรทำแบ่งหน้า/กรองตามปีฝั่ง backend
 
 ## สถานะล่าสุด
+- v1.2.0 (2026-11-25): สแกนรูปเป็นข้อความ + แยกข้อมูล + คัดลอก — ทดสอบ parser และ UI กับ OCR จำลองแล้ว; ยังไม่ได้ทดสอบ Google OCR จริงและ Tesseract บน iPhone จริง
+  - ผู้ใช้ยังไม่ได้ยืนยันว่าเปิด Drive API แล้วหรือยัง
 - v1.1.0 (2026-11-25): เพิ่มรายชื่อผู้ถูกหักภาษี + ดาว + tag/กลุ่ม, หน้าตั้งค่าส่วนระบบเหลือแค่เลขเวอร์ชัน+ปุ่มอัปเดต (ย้อน backend/Log ย้ายไป "ขั้นสูง")
 - v1.0.1 (2026-11-25): ผู้ใช้ทำ SETUP.md ครบแล้ว (เปิด Pages, สร้างชีต, วาง Loader, Deploy)
 - `API_URL` = https://script.google.com/macros/s/AKfycbzkiifhCDfL4DgNFxz1zuNsFn9aGKfEUKRd_ZMjG1NSiEo0uVCixl40A1v188eqh-WU/exec

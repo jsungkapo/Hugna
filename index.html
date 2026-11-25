@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/app.css?v=1.1.0">
+<link rel="stylesheet" href="css/app.css?v=1.2.0">
 </head>
 <body>
 
@@ -88,7 +88,7 @@
 
     <!-- รายชื่อผู้ถูกหักภาษี -->
     <section class="view" id="v-payees">
-      <div class="filters"><input id="pq" type="search" placeholder="ค้นหาชื่อหรือเลขผู้เสียภาษี" aria-label="ค้นหารายชื่อ"><button type="button" class="pri" id="pNew">+ เพิ่มรายชื่อ</button></div>
+      <div class="filters"><input id="pq" type="search" placeholder="ค้นหาชื่อหรือเลขผู้เสียภาษี" aria-label="ค้นหารายชื่อ"><div class="row" style="flex-wrap:nowrap"><label class="btn" aria-label="สแกนเพิ่มรายชื่อ"><svg viewBox="0 0 24 24" class="ico"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><input type="file" accept="image/*" id="scanP" hidden></label><button type="button" class="pri" id="pNew">+ เพิ่มรายชื่อ</button></div></div>
       <div class="chips tagbar" id="pTags"></div>
       <div class="cards" id="pCards"></div>
     </section>
@@ -104,6 +104,7 @@
             <div class="g3"><label>เล่มที่<input data-k="book" inputmode="numeric"></label><label>เลขที่<input data-k="no" id="noIn" inputmode="numeric"></label><label>วันที่ออก<input type="date" data-k="issueDate"></label></div>
           </fieldset>
           <fieldset><legend>ผู้ถูกหักภาษี</legend>
+            <label class="btn scanbtn"><svg viewBox="0 0 24 24" class="ico"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg> สแกนใบเสร็จ / ใบแจ้งหนี้<input type="file" accept="image/*" id="scanIn" hidden></label>
             <div class="favstrip" id="favStrip"></div>
             <div class="seg" id="ptype"><button type="button" data-v="j">นิติบุคคล</button><button type="button" data-v="p">บุคคลธรรมดา</button></div>
             <label>ชื่อ<input data-k="payeeName" list="payees" placeholder="เช่น บริษัท ตัวอย่าง จำกัด"></label>
@@ -230,9 +231,10 @@
 <div class="ov" id="ov" hidden><div class="dlg" id="dlg"></div></div>
 <div class="toast" id="toast" role="status"></div>
 
-<script src="js/config.js?v=1.1.0"></script>
-<script src="js/api.js?v=1.1.0"></script>
-<script src="js/cert.js?v=1.1.0"></script>
-<script src="js/app.js?v=1.1.0"></script>
+<script src="js/config.js?v=1.2.0"></script>
+<script src="js/api.js?v=1.2.0"></script>
+<script src="js/cert.js?v=1.2.0"></script>
+<script src="js/scan.js?v=1.2.0"></script>
+<script src="js/app.js?v=1.2.0"></script>
 </body>
 </html>

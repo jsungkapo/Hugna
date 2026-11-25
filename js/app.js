@@ -17,7 +17,7 @@
   /* ================= UI helpers ================= */
   let tT = 0;
   function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tT); tT = setTimeout(() => t.classList.remove('on'), 2800); }
-  function dialog(html) { $('#dlg').innerHTML = html; $('#ov').hidden = false; }
+  function dialog(html) { $('#dlg').onclick = null; $('#dlg').innerHTML = html; $('#ov').hidden = false; }
   function closeDlg() { $('#ov').hidden = true; }
   $('#ov').addEventListener('click', e => { if (e.target.id === 'ov' || e.target.closest('[data-close]')) closeDlg(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDlg(); });
@@ -509,10 +509,10 @@
     $('#pkList').onclick = e => { const b = e.target.closest('[data-pk]'); if (!b) return; closeDlg(); applyPayee(S.payees.find(x => x.id === b.dataset.pk)); };
   }
   function payeeForm(p) {
-    const P = p ? clone(p) : { id: null, type: 'j', name: '', taxId: '', branch: '', address: '', tags: S.pFilter && !['fav', 'all'].includes(S.pFilter) ? [S.pFilter] : [], defItem: {}, form: '' };
+    const P = p ? Object.assign({ tags: [], defItem: {} }, clone(p)) : { id: null, type: 'j', name: '', taxId: '', branch: '', address: '', tags: S.pFilter && !['fav', 'all'].includes(S.pFilter) ? [S.pFilter] : [], defItem: {}, form: '' };
     const d = P.defItem || {};
-    const canDel = p && (isAdmin() || p.createdBy === S.user.id);
-    dialog(`<h3 style="margin:0">${p ? 'แก้ไขรายชื่อ' : 'เพิ่มรายชื่อผู้ถูกหักภาษี'}</h3>
+    const canDel = p && p.id && (isAdmin() || p.createdBy === S.user.id);
+    dialog(`<h3 style="margin:0">${p && p.id ? 'แก้ไขรายชื่อ' : 'เพิ่มรายชื่อผู้ถูกหักภาษี'}</h3>
       <form id="pf" class="stackgap" autocomplete="off">
         <div class="seg" id="pfType"><button type="button" data-v="j">นิติบุคคล</button><button type="button" data-v="p">บุคคลธรรมดา</button></div>
         <label>ชื่อ<input id="pfName" required value="${esc(P.name)}"></label>
@@ -593,6 +593,91 @@
       }
     };
   }
+
+  /* ================= สแกนรูป (OCR) ================= */
+  async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); }
+    catch (e) { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (x) {} ta.remove(); }
+    toast('คัดลอกแล้ว');
+  }
+  const KIND = { base: 'ยอดก่อน VAT', total: 'ยอดรวม', vat: 'ภาษีมูลค่าเพิ่ม', wht: 'หัก ณ ที่จ่าย', other: '' };
+  async function startScan(file, mode) {
+    if (!file) return;
+    dialog(`<h3 style="margin:0">กำลังอ่านข้อความจากรูป…</h3><div class="prog"><i id="scBar"></i></div><p class="hint" id="scMsg">กำลังเตรียมรูป</p>`);
+    try {
+      const img = await Scan.prepImage(file);
+      const r = await Scan.readText(img, (msg, p) => { const m = $('#scMsg'), b = $('#scBar'); if (m) m.textContent = msg + (p ? ' ' + Math.round(p * 100) + '%' : ''); if (b) b.style.width = Math.round((p || 0) * 100) + '%'; });
+      const res = Scan.parse(r.text, S.companies.map(c => ({ name: c.name, taxId: c.taxId })));
+      showScan(res, img, r.engine, mode);
+    } catch (e) {
+      if (e.code === 'auth') return;
+      dialog(`<h3 style="margin:0">อ่านรูปไม่สำเร็จ</h3><p class="err">${esc(e.message)}</p><div class="row"><button type="button" class="pri" data-close>ปิด</button></div>`);
+    }
+  }
+  function showScan(r, img, engine, mode) {
+    const firstNonOwn = arr => { const i = arr.findIndex(x => !x.own); return i < 0 ? (arr.length ? 0 : -1) : i; };
+    const F = {
+      name: { label: 'ชื่อผู้ถูกหักภาษี', items: r.names.map(x => ({ v: x.value, note: x.own ? 'บริษัทของเรา' : '' })), sel: firstNonOwn(r.names) },
+      taxId: { label: 'เลขผู้เสียภาษี', items: r.taxIds.map(x => ({ v: x.value, note: x.own ? 'บริษัทของเรา' : x.valid ? 'ตรวจเลขแล้วถูกต้อง' : 'เลขอาจอ่านผิด ตรวจอีกครั้ง' })), sel: -1 },
+      branch: { label: 'สาขา', items: r.branches.map(v => ({ v, note: '' })), sel: r.branches.length ? 0 : -1 },
+      address: { label: 'ที่อยู่', items: r.addresses.map(x => ({ v: x.value, note: x.own ? 'อาจเป็นที่อยู่ของเรา' : '' })), sel: firstNonOwn(r.addresses) },
+      amount: { label: 'ยอดเงิน', items: r.amounts.map(x => ({ v: x.value.toFixed(2), show: money(x.value), note: KIND[x.kind], kind: x.kind })), sel: r.amounts.length ? 0 : -1 },
+      date: { label: 'วันที่จ่าย', items: r.dates.map(v => ({ v, show: dShort(v), note: '' })), sel: r.dates.length ? 0 : -1 }
+    };
+    const ti = r.taxIds.findIndex(x => !x.own && x.valid); F.taxId.sel = ti >= 0 ? ti : r.taxIds.findIndex(x => !x.own);
+    const order = mode === 'payee' ? ['name', 'taxId', 'branch', 'address'] : ['name', 'taxId', 'branch', 'address', 'amount', 'date'];
+    const found = order.filter(k => F[k].items.length);
+    let vatOff = false;
+    const draw = () => {
+      const a = F.amount.items[F.amount.sel];
+      $('#scFields').innerHTML = found.map(k => `<div class="sf"><div class="sfh">${F[k].label}${k === 'amount' && a && a.kind === 'total' && r.hasVat ? `<label class="chk" style="min-height:0;font-size:13px;color:var(--ink)"><input type="checkbox" id="scVat"${vatOff ? ' checked' : ''}> ถอด VAT 7%</label>` : ''}</div>
+        ${F[k].items.map((it, i) => `<div class="sr${F[k].sel === i ? ' on' : ''}" data-f="${k}" data-i="${i}"><i class="ck"></i><span class="v">${esc(it.show || it.v)}${it.note ? `<small>${esc(it.note)}</small>` : ''}</span><button type="button" class="ghost" data-copy="${esc(it.v)}">คัดลอก</button></div>`).join('')}</div>`).join('')
+        || '<p class="hint">ไม่พบข้อมูลที่แยกได้ — ดูข้อความทั้งหมดด้านล่างแล้วแตะคัดลอกได้</p>';
+      const vc = $('#scVat'); if (vc) vc.onchange = e => { vatOff = e.target.checked; };
+    };
+    dialog(`<h3 style="margin:0">ผลการสแกน</h3>
+      <div class="scanimg"><img src="${img.dataUrl}" alt="รูปที่สแกน"></div>
+      <p class="hint">${engine === 'google' ? 'อ่านด้วย Google' : 'อ่านในเครื่อง (ความแม่นยำปานกลาง)'} · แตะเพื่อเลือก/ไม่เลือก · ตรวจข้อมูลก่อนใช้</p>
+      <div class="stackgap" id="scFields"></div>
+      <details${found.length ? '' : ' open'}><summary>ข้อความทั้งหมด (${r.lines.length} บรรทัด) — แตะบรรทัดเพื่อคัดลอก</summary>
+        <div class="row" style="margin:6px 0"><button type="button" id="scCopyAll">คัดลอกทั้งหมด</button></div>
+        <div class="lines" id="scLines">${r.lines.map(l => `<button type="button" data-copy="${esc(l)}">${esc(l)}</button>`).join('')}</div></details>
+      <div class="row"><button type="button" class="ghost" data-close>ปิด</button>${found.length ? `<button type="button" class="pri" id="scUse">${mode === 'payee' ? 'สร้างรายชื่อจากข้อมูลนี้' : 'ใส่ลงใบ'}</button>` : ''}</div>`);
+    if (F.amount.items[F.amount.sel] && F.amount.items[F.amount.sel].kind === 'total' && r.hasVat && !r.amounts.some(x => x.kind === 'base')) vatOff = true;
+    draw();
+    $('#dlg').onclick = e => {
+      const c = e.target.closest('[data-copy]'); if (c) { e.stopPropagation(); copyText(c.dataset.copy); return; }
+      const row = e.target.closest('.sr'); if (!row) return;
+      const f = F[row.dataset.f], i = +row.dataset.i; f.sel = f.sel === i ? -1 : i;
+      if (row.dataset.f === 'amount') { const it = f.items[f.sel]; vatOff = !!(it && it.kind === 'total' && r.hasVat && !r.amounts.some(x => x.kind === 'base')); }
+      draw();
+    };
+    $('#scCopyAll').onclick = () => copyText(r.text);
+    const pick = k => F[k].sel >= 0 ? F[k].items[F[k].sel].v : '';
+    const use = $('#scUse'); if (!use) return;
+    use.onclick = () => {
+      const name = pick('name'), taxId = pick('taxId'), branch = pick('branch'), address = pick('address');
+      const type = /^(นาย|นาง|นางสาว|น\.ส\.)/.test(name) ? 'p' : 'j';
+      const existing = taxId && S.payees.find(p => p.taxId === taxId);
+      $('#dlg').onclick = null; closeDlg();
+      if (mode === 'payee') {
+        if (existing) { toast('มีรายชื่อนี้อยู่แล้ว'); return payeeForm(existing); }
+        return payeeForm({ type, name, taxId, branch: branch === 'สำนักงานใหญ่' ? '' : branch, address, tags: [], defItem: {} });
+      }
+      if (existing) applyPayee(existing);
+      else Object.assign(D, { payeeId: null, payeeType: type, form: type === 'p' ? 3 : 6, payeeName: name || D.payeeName, payeeTaxId: taxId || D.payeeTaxId,
+        payeeBranch: branch === 'สำนักงานใหญ่' ? '' : (branch || D.payeeBranch), payeeAddress: address || D.payeeAddress });
+      const amt = pick('amount'), date = pick('date');
+      if (amt || date) {
+        let it = D.items.find(x => !C.amt(x)) || D.items[0];
+        if (amt) it.amount = (vatOff ? r2(+amt / 1.07) : +amt).toFixed(2);
+        if (date) it.date = date;
+      }
+      fillForm(); toast(existing ? 'พบในรายชื่อเดิม ใส่ข้อมูลให้แล้ว' : 'ใส่ข้อมูลจากรูปแล้ว ตรวจอีกครั้งก่อนบันทึก');
+    };
+  }
+  $('#scanIn').onchange = e => { const f = e.target.files[0]; e.target.value = ''; startScan(f, 'cert'); };
+  $('#scanP').onchange = e => { const f = e.target.files[0]; e.target.value = ''; startScan(f, 'payee'); };
 
   /* ================= settings ================= */
   function renderSettings() {

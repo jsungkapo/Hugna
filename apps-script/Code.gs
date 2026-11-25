@@ -9,7 +9,7 @@
  * --------------------------------------------------------------
  */
 var HUGNA_BACKEND = true;
-var VERSION = '1.1.0';
+var VERSION = '1.2.0';
 
 var SESSION_DAYS = 30;
 var HASH_ROUNDS = 300;
@@ -217,6 +217,42 @@ var API = {
       log_(user, 'deleteCompany', c.name);
       return true;
     });
+  },
+
+  /**
+   * อ่านข้อความจากรูป (OCR) ด้วย Google Drive — แม่นสำหรับภาษาไทย
+   * ต้องเปิด "Drive API" ใน Apps Script (บริการ +) ครั้งเดียว — ถ้ายังไม่เปิด หน้าเว็บจะอ่านในเครื่องแทน
+   */
+  ocr: function (req, user) {
+    var m = /^data:(image\/(png|jpeg|webp));base64,(.+)$/.exec(String(req.image || ''));
+    if (!m) throw err_('รูปไม่ถูกต้อง');
+    var bytes = Utilities.base64Decode(m[3]);
+    if (bytes.length > 5000000) throw err_('รูปใหญ่เกินไป');
+    var token = ScriptApp.getOAuthToken();
+    var auth = { Authorization: 'Bearer ' + token };
+    var boundary = 'hugna' + Date.now();
+    var meta = JSON.stringify({ name: 'hugna-ocr-' + Date.now(), mimeType: 'application/vnd.google-apps.document', parents: [folder_().getId()] });
+    var head = Utilities.newBlob('--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta +
+      '\r\n--' + boundary + '\r\nContent-Type: ' + m[1] + '\r\n\r\n').getBytes();
+    var tail = Utilities.newBlob('\r\n--' + boundary + '--').getBytes();
+    var res = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=th&fields=id', {
+      method: 'post', contentType: 'multipart/related; boundary=' + boundary, payload: head.concat(bytes, tail),
+      headers: auth, muteHttpExceptions: true
+    });
+    if (res.getResponseCode() !== 200) {
+      var body = res.getContentText();
+      var off = /has not been used|is disabled|accessNotConfigured|SERVICE_DISABLED/i.test(body);
+      throw err_(off ? 'ยังไม่ได้เปิด Drive API ใน Apps Script' : 'Google OCR ผิดพลาด (' + res.getResponseCode() + ')', 'ocr_unavailable');
+    }
+    var id = JSON.parse(res.getContentText()).id, text = '';
+    try {
+      var ex = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + id + '/export?mimeType=text/plain', { headers: auth, muteHttpExceptions: true });
+      text = ex.getContentText('UTF-8');
+    } finally {
+      UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + id, { method: 'delete', headers: auth, muteHttpExceptions: true });
+    }
+    log_(user, 'ocr', text.length + ' ตัวอักษร');
+    return { text: text.replace(/^\uFEFF/, ''), engine: 'google' };
   },
 
   /* ---------- รายชื่อผู้ถูกหักภาษี ---------- */
