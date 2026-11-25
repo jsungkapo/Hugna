@@ -1,0 +1,523 @@
+/* HugNa — ตัวแอปหลัก */
+(function () {
+  'use strict';
+  const C = window.Cert, CFG = window.HUGNA_CONFIG, LS = API.LS;
+  const { esc, num, r2, money, dShort } = C;
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+  const thisBook = () => String(new Date().getFullYear() + 543);
+
+  const S = { user: null, companies: [], certs: [], coId: '', imgs: {}, users: [], started: false, copies: 'both', mode: 'form' };
+  let D = null, CD = null;
+  const isAdmin = () => S.user && S.user.role === 'admin';
+  const co = id => S.companies.find(c => c.id === id);
+
+  /* ================= UI helpers ================= */
+  let tT = 0;
+  function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tT); tT = setTimeout(() => t.classList.remove('on'), 2800); }
+  function dialog(html) { $('#dlg').innerHTML = html; $('#ov').hidden = false; }
+  function closeDlg() { $('#ov').hidden = true; }
+  $('#ov').addEventListener('click', e => { if (e.target.id === 'ov' || e.target.closest('[data-close]')) closeDlg(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDlg(); });
+  function ask(msg, ok) {
+    return new Promise(res => {
+      dialog(`<p style="margin:0;font-size:17px">${esc(msg)}</p><div class="row"><button type="button" class="ghost" id="aN">ยกเลิก</button><button type="button" class="pri" id="aY">${esc(ok)}</button></div>`);
+      $('#aN').onclick = () => { closeDlg(); res(false); }; $('#aY').onclick = () => { closeDlg(); res(true); };
+    });
+  }
+  async function busy(btn, label, fn) {
+    const old = btn.textContent; btn.disabled = true; btn.textContent = label;
+    try { return await fn(); } catch (e) { toast(e.message || 'เกิดข้อผิดพลาด'); } finally { btn.disabled = false; btn.textContent = old; }
+  }
+  function showErr(el, msg) { el.textContent = msg; el.hidden = !msg; }
+  function screen(id) { ['boot', 'scr-url', 'scr-login', 'scr-setup', 'app'].forEach(x => { $('#' + x).hidden = x !== id; }); }
+
+  /* ================= boot / auth ================= */
+  async function boot() {
+    registerSW(); checkVersion();
+    if (!API.url()) return screen('scr-url');
+    if (!API.token()) return toLogin();
+    const cached = LS.get('cache', null);
+    if (cached && cached.user) { apply(cached); startApp(); }
+    try { await loadAll(); startApp(); }
+    catch (e) {
+      if (e.code === 'auth') return;
+      if (!S.started) { screen('boot'); showErr($('#bootErr'), e.message); $('#bootRetry').hidden = false; }
+      else toast('ออฟไลน์ — แสดงข้อมูลล่าสุดที่เคยโหลด');
+    }
+  }
+  $('#bootRetry').onclick = () => { $('#bootRetry').hidden = true; showErr($('#bootErr'), ''); boot(); };
+  async function loadAll() { const d = await API.call('bootstrap'); apply(d); saveCache(); }
+  function saveCache() { LS.set('cache', { user: S.user, companies: S.companies, certs: S.certs }); }
+  function apply(d) {
+    S.user = d.user; S.companies = d.companies || []; S.certs = d.certs || [];
+    const last = LS.get('lastCo', '');
+    S.coId = co(last) ? last : (co(S.coId) ? S.coId : (S.companies[0] && S.companies[0].id) || '');
+  }
+  async function toLogin(msg) {
+    S.started = false; screen('scr-login'); showErr($('#lgErr'), msg || '');
+    try { const st = await API.call('status'); if (st.needsSetup) screen('scr-setup'); }
+    catch (e) { showErr($('#lgErr'), e.message); }
+  }
+  API.onAuthLost = msg => toLogin(msg);
+
+  $('#urlForm').addEventListener('submit', async e => {
+    e.preventDefault(); const u = $('#urlIn').value.trim();
+    if (!/^https:\/\/script\.google(usercontent)?\.com\/.+\/exec/.test(u)) return showErr($('#urlErr'), 'URL ต้องเป็นของ script.google.com และลงท้ายด้วย /exec');
+    API.setUrl(u); showErr($('#urlErr'), '');
+    try { await API.call('ping'); toLogin(); } catch (err) { showErr($('#urlErr'), 'เชื่อมต่อไม่ได้: ' + err.message); }
+  });
+  $('#lgUrl').onclick = () => { $('#urlIn').value = API.url(); screen('scr-url'); };
+  $('#loginForm').addEventListener('submit', async e => {
+    e.preventDefault(); const btn = e.submitter || $('#loginForm .pri'); showErr($('#lgErr'), '');
+    await busy(btn, 'กำลังเข้าสู่ระบบ…', async () => {
+      try {
+        const r = await API.call('login', { username: $('#lgUser').value, password: $('#lgPass').value });
+        API.setToken(r.token); $('#lgPass').value = ''; await loadAll(); startApp();
+      } catch (err) { showErr($('#lgErr'), err.message); }
+    });
+  });
+  $('#setupForm').addEventListener('submit', async e => {
+    e.preventDefault(); showErr($('#suErr'), '');
+    if ($('#suPass').value !== $('#suPass2').value) return showErr($('#suErr'), 'รหัสผ่านทั้งสองช่องไม่ตรงกัน');
+    await busy(e.submitter || $('#setupForm .pri'), 'กำลังสร้าง…', async () => {
+      try {
+        const r = await API.call('setup', { name: $('#suName').value, username: $('#suUser').value, password: $('#suPass').value });
+        API.setToken(r.token); await loadAll(); startApp(); location.hash = '#companies';
+      } catch (err) { showErr($('#suErr'), err.message); }
+    });
+  });
+
+  function startApp() {
+    screen('app'); document.body.classList.toggle('is-admin', isAdmin());
+    if (!S.started) { S.started = true; D = blank(); CD = coBlank(); }
+    renderCoSel(); renderList(); fillForm(); renderCompanies(); coForm(); renderSettings(); payeeList();
+    route();
+  }
+
+  /* ================= routing ================= */
+  const VIEWS = ['list', 'edit', 'companies', 'settings'];
+  function route() {
+    let v = location.hash.slice(1) || 'list';
+    if (!VIEWS.includes(v) || (v === 'companies' && !isAdmin())) v = 'list';
+    VIEWS.forEach(x => { $('#v-' + x).hidden = x !== v; });
+    $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.v === v));
+    if (v === 'edit') fit();
+    if (v === 'settings') loadSystem();
+    window.scrollTo({ top: 0 });
+  }
+  window.addEventListener('hashchange', () => { if (S.started) route(); });
+  $('#nav a[data-v=edit]').addEventListener('click', () => { if (D && D.id) { D = blank(); fillForm(); } });
+  function go(v) { if (location.hash === '#' + v) route(); else location.hash = '#' + v; }
+
+  /* ================= company selector ================= */
+  function renderCoSel() {
+    $('#coSel').innerHTML = S.companies.length
+      ? S.companies.map(c => `<option value="${esc(c.id)}"${c.id === S.coId ? ' selected' : ''}>${esc(c.name)}</option>`).join('')
+      : '<option value="">— ยังไม่มีบริษัท —</option>';
+  }
+  $('#coSel').onchange = e => {
+    S.coId = e.target.value; LS.set('lastCo', S.coId);
+    if (!D.id) { D.companyId = S.coId; D.no = ''; }
+    renderList(); fillForm(); renderCompanies();
+  };
+
+  /* ================= images ================= */
+  const pending = {};
+  function img(fileId) {
+    if (!fileId) return null;
+    if (S.imgs[fileId]) return S.imgs[fileId];
+    const cached = LS.get('img_' + fileId, null);
+    if (cached) { S.imgs[fileId] = cached; return cached; }
+    if (!pending[fileId]) {
+      pending[fileId] = API.call('image', { fileId }).then(r => {
+        S.imgs[fileId] = r.dataUrl; LS.set('img_' + fileId, r.dataUrl); preview(); renderCompanies();
+      }).catch(() => {}).finally(() => { delete pending[fileId]; });
+    }
+    return null;
+  }
+  const imgsFor = c => c ? { sig: img(c.sigFileId), stamp: img(c.stampFileId) } : {};
+
+  /* ================= list ================= */
+  function renderList() {
+    const q = $('#q').value.trim().toLowerCase(), m = $('#mon').value;
+    const rows = S.certs.filter(c => c.companyId === S.coId && (!m || String(c.issueDate).startsWith(m)) &&
+      (!q || [c.payeeName, c.payeeTaxId, c.no, c.book + '/' + c.no].join(' ').toLowerCase().includes(q)))
+      .sort((a, b) => String(b.issueDate).localeCompare(String(a.issueDate)) || String(b.no).localeCompare(String(a.no)));
+    const ta = rows.reduce((s, c) => s + num(c.totalAmount), 0), tt = rows.reduce((s, c) => s + num(c.totalTax), 0);
+    $('#kpis').innerHTML = `<div>จำนวนใบ<b>${rows.length}</b></div><div>ยอดจ่ายรวม<b>${money(ta)}</b></div><div class="tx">ภาษีที่หักรวม<b>${money(tt)}</b></div>`;
+    if (!S.companies.length) {
+      $('#certCards').innerHTML = `<div class="empty">ยังไม่มีบริษัทในระบบ${isAdmin() ? ' — เริ่มที่แท็บ “บริษัท”' : ' — ติดต่อผู้ดูแลระบบ'}</div>`; return;
+    }
+    $('#certCards').innerHTML = rows.length ? rows.map(c => `<button type="button" class="cc" data-open="${esc(c.id)}">
+      <span class="h"><b>${esc(c.book)}/${esc(c.no)}</b><span>${esc(dShort(c.issueDate))} · ${esc(C.FORMS[c.form] || '')}</span></span>
+      <span class="nm">${esc(c.payeeName)}</span>
+      <span class="am"><span>ยอดจ่าย <b>${money(c.totalAmount)}</b></span><span class="t">ภาษี <b>${money(c.totalTax)}</b></span></span>
+      <span class="hint">โดย ${esc(c.createdByName || '-')}</span></button>`).join('')
+      : `<div class="empty">${S.certs.some(c => c.companyId === S.coId) ? 'ไม่พบเอกสารที่ตรงกับตัวกรอง' : 'ยังไม่มีเอกสารของบริษัทนี้ — กด “ออกใบใหม่”'}</div>`;
+  }
+  $('#q').addEventListener('input', renderList); $('#mon').addEventListener('input', renderList);
+  $('#certCards').addEventListener('click', e => {
+    const b = e.target.closest('[data-open]'); if (!b) return;
+    const c = S.certs.find(x => x.id === b.dataset.open); if (!c) return;
+    D = clone(c); fillForm(); go('edit');
+  });
+
+  /* ================= editor ================= */
+  function blank() {
+    return { id: null, companyId: S.coId, book: thisBook(), no: '', issueDate: todayISO(), form: 6, seq: '',
+      payeeType: 'j', payeeName: '', payeeTaxId: '', payeeBranch: '', payeeAddress: '', payer: 0, payerOther: '',
+      items: [{ id: uid(), cat: 'c5', desc: 'ค่าบริการ', date: todayISO(), amount: '', rate: 3 }],
+      funds: { gpf: '', sso: '', pvd: '' }, useSig: true, useStamp: true };
+  }
+  function nextNo(coId, book) {
+    let m = 0; S.certs.forEach(c => { if (c.companyId === coId && String(c.book) === String(book)) m = Math.max(m, parseInt(c.no, 10) || 0); });
+    return String(m + 1).padStart(4, '0');
+  }
+  const canEdit = c => !c.id || isAdmin() || c.createdBy === S.user.id;
+  const getP = (o, p) => p.split('.').reduce((a, k) => a == null ? a : a[k], o);
+  const setP = (o, p, v) => { const ks = p.split('.'); const l = ks.pop(); ks.reduce((a, k) => (a[k] = a[k] || {}), o)[l] = v; };
+
+  $('#formSel').innerHTML = C.FORMS.map((x, i) => `<option value="${i}">(${i + 1}) ${x}</option>`).join('');
+  $('#payerSel').innerHTML = C.PAYER.map((x, i) => `<option value="${i}">(${i + 1}) ${x}</option>`).join('');
+  $('#presets').innerHTML = C.PRESETS.map((p, i) => `<button type="button" data-p="${i}">${p[0]} <b>${p[1]}%</b></button>`).join('');
+
+  function fillForm() {
+    if (!D) return;
+    for (const el of $$('#f [data-k]')) { const v = getP(D, el.dataset.k); if (el.type === 'checkbox') el.checked = v !== false; else el.value = v ?? ''; }
+    $('#noIn').placeholder = 'อัตโนมัติ (' + nextNo(D.companyId, D.book) + ')';
+    $$('#ptype button').forEach(b => b.classList.toggle('on', b.dataset.v === D.payeeType));
+    $('#poL').hidden = +D.payer !== 3;
+    $('#copiesSel').value = S.copies;
+    const tag = $('#editTag');
+    tag.hidden = !D.id;
+    tag.textContent = D.id ? `กำลังแก้ไขใบเลขที่ ${D.book}/${D.no}` + (canEdit(D) ? '' : ' (ดูอย่างเดียว — ใบนี้ออกโดยผู้อื่น)') : '';
+    $('#save').disabled = !canEdit(D);
+    $('#noco').hidden = !!S.companies.length;
+    const c = co(D.companyId);
+    const miss = c ? [!c.sigFileId && 'ลายเซ็น', !c.stampFileId && 'ตรายาง'].filter(Boolean) : [];
+    $('#sigHint').textContent = miss.length ? `บริษัทนี้ยังไม่มี${miss.join('และ')}` + (isAdmin() ? ' — เพิ่มได้ที่แท็บ “บริษัท”' : '') : '';
+    renderItems(); preview();
+  }
+  function renderItems() {
+    $('#items').innerHTML = D.items.map((it, i) => {
+      const custom = it.custom || !C.RATES.includes(num(it.rate));
+      return `<div class="it" data-i="${i}">
+      <div class="it-h"><select data-ik="cat" aria-label="ประเภทเงินได้">${C.CATS.map(c => `<option value="${c.k}"${c.k === it.cat ? ' selected' : ''}>${esc(c.s)}</option>`).join('')}</select>${D.items.length > 1 ? `<button type="button" class="x" data-del="${i}" aria-label="ลบรายการ">×</button>` : ''}</div>
+      <input data-ik="desc" placeholder="รายละเอียด เช่น ค่าบริการออกแบบ" value="${esc(it.desc)}" aria-label="รายละเอียด">
+      <div class="g3"><label>จำนวนเงิน (ก่อน VAT)<input data-ik="amount" inputmode="decimal" placeholder="0.00" value="${esc(it.amount)}"></label>
+       <label>วันที่จ่าย<input type="date" data-ik="date" value="${esc(it.date)}"></label>
+       <label>อัตราหัก<select data-ik="rateSel">${C.RATES.map(r => `<option value="${r}"${!custom && num(it.rate) === r ? ' selected' : ''}>${r}%</option>`).join('')}<option value="x"${custom ? ' selected' : ''}>กำหนดเอง</option></select></label></div>
+      <div class="it-f"><button type="button" class="link" data-vat="${i}">ยอดรวม VAT 7% → ถอด VAT</button>${custom ? `<label class="inl">อัตรา %<input data-ik="rate" inputmode="decimal" value="${esc(it.rate)}"></label>` : ''}<span class="tax">หัก <b data-tax>${money(C.tax(it))}</b> บาท</span></div></div>`;
+    }).join('');
+  }
+  function totals() {
+    const ta = D.items.reduce((s, it) => s + C.amt(it), 0), tt = D.items.reduce((s, it) => s + C.tax(it), 0);
+    $('#tot').innerHTML = `<span>ยอดจ่ายรวม <b>${money(ta)}</b></span><span>ภาษีที่หักรวม <b style="color:var(--redd)">${money(tt)}</b></span>`;
+  }
+  const pv = $('#pv'), sh = $('#sheet');
+  function fit() { const w = pv.clientWidth; if (!w) return; const s = w / 794; sh.style.transform = `scale(${s})`; pv.style.height = Math.ceil(sh.offsetHeight * s) + 'px'; }
+  const fitRO = new ResizeObserver(fit); fitRO.observe(pv);
+  let pvT = 0;
+  function sheetFor(copy) { const c = D.coSnap || co(D.companyId); return C.sheetHTML(D, c, imgsFor(co(D.companyId)), copy); }
+  function preview() { clearTimeout(pvT); pvT = setTimeout(() => { if (!D) return; sh.innerHTML = sheetFor(1); fit(); totals(); }, 80); }
+
+  $('#f').addEventListener('input', e => {
+    const el = e.target;
+    if (el.id === 'copiesSel') { S.copies = el.value; return; }
+    if (el.dataset.k) {
+      let v = el.type === 'checkbox' ? el.checked : el.value;
+      if (el.dataset.k === 'form' || el.dataset.k === 'payer') v = +v;
+      setP(D, el.dataset.k, v);
+      if (el.dataset.k === 'payer') $('#poL').hidden = v !== 3;
+      if (el.dataset.k === 'book') $('#noIn').placeholder = 'อัตโนมัติ (' + nextNo(D.companyId, D.book) + ')';
+      if (el.dataset.k === 'payeeName') autofillPayee();
+      preview(); return;
+    }
+    const box = el.closest('.it'); if (!box || !el.dataset.ik) return;
+    const it = D.items[+box.dataset.i], k = el.dataset.ik;
+    if (k === 'rateSel') { if (el.value === 'x') it.custom = true; else { it.custom = false; it.rate = +el.value; } renderItems(); preview(); return; }
+    it[k] = el.value; box.querySelector('[data-tax]').textContent = money(C.tax(it)); preview();
+  });
+  $('#copiesSel').addEventListener('change', e => { S.copies = e.target.value; });
+  $('#f').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.del) { D.items.splice(+b.dataset.del, 1); renderItems(); preview(); }
+    else if (b.dataset.vat) {
+      const it = D.items[+b.dataset.vat];
+      if (C.amt(it) > 0) { it.amount = r2(C.amt(it) / 1.07).toFixed(2); renderItems(); preview(); toast('ถอด VAT แล้ว ยอดก่อน VAT = ' + money(C.amt(it))); }
+    } else if (b.dataset.p) {
+      const [desc, rate, cat] = C.PRESETS[+b.dataset.p]; const last = D.items[D.items.length - 1];
+      const n = { id: uid(), cat, desc, date: (last && last.date) || todayISO(), amount: '', rate };
+      if (last && !C.amt(last)) D.items[D.items.length - 1] = Object.assign(n, { amount: last.amount }); else D.items.push(n);
+      renderItems(); preview();
+    } else if (b.dataset.v) { D.payeeType = b.dataset.v; D.form = b.dataset.v === 'j' ? 6 : 3; fillForm(); }
+  });
+  $('#addItem').onclick = () => { D.items.push({ id: uid(), cat: 'c5', desc: '', date: todayISO(), amount: '', rate: 3 }); renderItems(); };
+  $('#editSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return; S.mode = b.dataset.m;
+    $$('#editSeg button').forEach(x => x.classList.toggle('on', x === b));
+    $('.ed').className = 'ed m-' + S.mode; if (S.mode === 'preview') { sh.innerHTML = sheetFor(1); requestAnimationFrame(fit); }
+  });
+  $('.ed').classList.add('m-form');
+
+  function autofillPayee() {
+    const p = [...S.certs].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).find(c => c.payeeName === D.payeeName);
+    if (p && !D.payeeTaxId) {
+      Object.assign(D, { payeeType: p.payeeType, payeeTaxId: p.payeeTaxId, payeeBranch: p.payeeBranch, payeeAddress: p.payeeAddress, form: p.form });
+      const nm = D.payeeName; fillForm(); $('[data-k="payeeName"]').value = nm;
+    }
+  }
+  function payeeList() { $('#payees').innerHTML = [...new Set(S.certs.map(c => c.payeeName).filter(Boolean))].map(n => `<option value="${esc(n)}">`).join(''); }
+
+  $('#save').onclick = () => busy($('#save'), 'กำลังบันทึก…', async () => {
+    if (!D.companyId || !co(D.companyId)) throw new Error('เลือกหรือเพิ่มบริษัทผู้หักภาษีก่อน');
+    const rec = await API.call('saveCert', { cert: D });
+    S.certs = S.certs.filter(x => x.id !== rec.id).concat(rec); saveCache();
+    D = clone(rec); fillForm(); renderList(); payeeList(); toast('บันทึกแล้ว เลขที่ ' + rec.book + '/' + rec.no);
+  });
+  function fname(ext) { return `WHT-50tawi-${String(D.book).replace(/[^\w-]/g, '')}-${String(D.no || 'draft').replace(/[^\w-]/g, '')}.${ext}`; }
+  const copiesList = () => S.copies === '1' ? [1] : S.copies === '2' ? [2] : [1, 2];
+  async function ensureImgs() {
+    const c = co(D.companyId); if (!c) return;
+    for (const id of [D.useSig !== false && c.sigFileId, D.useStamp !== false && c.stampFileId]) {
+      if (id && !img(id) && pending[id]) await pending[id];
+    }
+  }
+  $('#pdf').onclick = () => busy($('#pdf'), 'กำลังสร้าง…', async () => {
+    await ensureImgs(); const blob = await C.toPDF(copiesList().map(sheetFor));
+    const r = await C.deliver(blob, fname('pdf')); if (r === 'downloaded') toast('ดาวน์โหลด PDF แล้ว');
+  });
+  $('#png').onclick = () => busy($('#png'), 'กำลังสร้าง…', async () => {
+    await ensureImgs(); const blob = await C.toPNG(sheetFor(copiesList()[0]));
+    const r = await C.deliver(blob, fname('png')); if (r === 'downloaded') toast('ดาวน์โหลดรูปแล้ว');
+  });
+  // เมนู "อื่น ๆ": ใบใหม่ / ทำซ้ำ / ลบ
+  $('#more').onclick = () => {
+    dialog(`<h3 style="margin:0">${D.id ? 'ใบเลขที่ ' + esc(D.book) + '/' + esc(D.no) : 'ใบที่ยังไม่บันทึก'}</h3><div class="stackgap">
+      <button type="button" id="dNew">เริ่มใบใหม่ (ล้างฟอร์ม)</button>
+      ${D.payeeName ? '<button type="button" id="dDup">ทำซ้ำเป็นใบใหม่ (ผู้ถูกหักเดิม)</button>' : ''}
+      ${D.id && canEdit(D) ? '<button type="button" class="danger" id="dDel">ลบใบนี้</button>' : ''}
+      <button type="button" class="ghost" data-close>ปิด</button></div>`);
+    $('#dNew').onclick = () => { closeDlg(); D = blank(); fillForm(); window.scrollTo({ top: 0 }); };
+    const dup = $('#dDup'); if (dup) dup.onclick = () => { closeDlg(); duplicate(); };
+    const del = $('#dDel'); if (del) del.onclick = async () => {
+      closeDlg(); if (!await ask(`ลบใบเลขที่ ${D.book}/${D.no} ?`, 'ลบ')) return;
+      try { await API.call('deleteCert', { id: D.id }); S.certs = S.certs.filter(x => x.id !== D.id); saveCache(); D = blank(); fillForm(); renderList(); toast('ลบแล้ว'); go('list'); }
+      catch (e) { toast(e.message); }
+    };
+  };
+  function duplicate() {
+    const src = D; D = blank();
+    Object.assign(D, { payeeType: src.payeeType, payeeName: src.payeeName, payeeTaxId: src.payeeTaxId, payeeBranch: src.payeeBranch, payeeAddress: src.payeeAddress, form: src.form, payer: src.payer, payerOther: src.payerOther });
+    D.items = src.items.map(it => Object.assign({}, it, { id: uid(), amount: '', date: todayISO() }));
+    fillForm(); toast('คัดลอกข้อมูลแล้ว ใส่ยอดเงินใหม่ได้เลย');
+  }
+
+  /* ================= companies (admin) ================= */
+  function coBlank() { return { id: null, name: '', taxId: '', branch: '', address: '', signer: '', signerTitle: '', sig: undefined, stamp: undefined }; }
+  function renderCompanies() {
+    $('#coCards').innerHTML = S.companies.length ? S.companies.map(c => {
+      const n = S.certs.filter(x => x.companyId === c.id).length;
+      return `<div class="co${c.id === S.coId ? ' on' : ''}"><h3>${esc(c.name)}</h3>
+      <p>เลขผู้เสียภาษี ${esc(c.taxId || '–')} · ${esc(c.branch || 'สำนักงานใหญ่')} · ${n} ใบ</p>
+      <div class="badges"><span class="badge${c.sigFileId ? ' y' : ''}">${c.sigFileId ? '✓ ' : ''}ลายเซ็น</span><span class="badge${c.stampFileId ? ' y' : ''}">${c.stampFileId ? '✓ ' : ''}ตรายาง</span></div>
+      <div class="row">${c.id === S.coId ? '<span class="hint">ใช้งานอยู่</span>' : `<button type="button" data-use="${esc(c.id)}">ใช้บริษัทนี้</button>`}<button type="button" class="ghost" data-edit="${esc(c.id)}">แก้ไข</button><button type="button" class="ghost danger" data-del="${esc(c.id)}">ลบ</button></div></div>`;
+    }).join('') : '<div class="empty">ยังไม่มีบริษัท — กรอกฟอร์มเพื่อเพิ่มบริษัทแรก<br>เพิ่มได้หลายบริษัท แล้วสลับได้จากเมนูด้านบน</div>';
+  }
+  function coForm() {
+    for (const el of $$('#coF [data-c]')) el.value = CD[el.dataset.c] || '';
+    $('#coTitle').textContent = CD.id ? 'แก้ไขบริษัท' : 'เพิ่มบริษัท'; imgPrev();
+  }
+  function curImg(k) { if (CD[k] !== undefined) return CD[k]; const c = CD.id && co(CD.id); return c ? img(c[k + 'FileId']) : null; }
+  function imgPrev() {
+    const s = curImg('sig'), t = curImg('stamp');
+    $('#sigPrev').innerHTML = s ? `<img src="${esc(s)}" alt="ลายเซ็น">` : 'ยังไม่มีลายเซ็น';
+    $('#stPrev').innerHTML = t ? `<img src="${esc(t)}" alt="ตรายาง">` : 'ยังไม่มีตรายาง';
+  }
+  $('#coF').addEventListener('input', e => { const k = e.target.dataset.c; if (k) CD[k] = e.target.value; });
+  $('#coCards').addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.use) { $('#coSel').value = b.dataset.use; $('#coSel').dispatchEvent(new Event('change')); }
+    else if (b.dataset.edit) { const c = co(b.dataset.edit); CD = Object.assign(coBlank(), c); coForm(); $('#coF').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    else if (b.dataset.del) {
+      const c = co(b.dataset.del); if (!await ask(`ลบบริษัท “${c.name}” ? เอกสารที่ออกไปแล้วยังเก็บไว้`, 'ลบบริษัท')) return;
+      try {
+        await API.call('deleteCompany', { id: c.id }); S.companies = S.companies.filter(x => x.id !== c.id);
+        if (S.coId === c.id) S.coId = (S.companies[0] && S.companies[0].id) || '';
+        saveCache(); renderCoSel(); renderCompanies(); renderList(); D = blank(); fillForm(); toast('ลบแล้ว');
+      } catch (err) { toast(err.message); }
+    }
+  });
+  $('#coNew').onclick = $('#coCancel').onclick = () => { CD = coBlank(); coForm(); $('#coF [data-c=name]').focus(); };
+  $('#coF').addEventListener('submit', e => {
+    e.preventDefault();
+    busy($('#coSave'), 'กำลังบันทึก…', async () => {
+      const payload = Object.assign({}, CD); if (payload.sig === undefined) delete payload.sig; if (payload.stamp === undefined) delete payload.stamp;
+      const rec = await API.call('saveCompany', { company: payload }, { timeout: 90000 });
+      if (CD.sig && rec.sigFileId) { S.imgs[rec.sigFileId] = CD.sig; LS.set('img_' + rec.sigFileId, CD.sig); }
+      if (CD.stamp && rec.stampFileId) { S.imgs[rec.stampFileId] = CD.stamp; LS.set('img_' + rec.stampFileId, CD.stamp); }
+      const isNew = !CD.id;
+      S.companies = S.companies.filter(x => x.id !== rec.id).concat(rec).sort((a, b) => a.name.localeCompare(b.name, 'th'));
+      if (isNew || !S.coId) { S.coId = rec.id; LS.set('lastCo', rec.id); }
+      CD = Object.assign(coBlank(), rec); saveCache();
+      renderCoSel(); renderCompanies(); coForm(); renderList(); if (!D.id) { D.companyId = S.coId; } fillForm();
+      toast('บันทึกบริษัทแล้ว');
+    });
+  });
+
+  /* รูป: ย่อขนาด ลบพื้นขาว และตัดขอบ */
+  const loadImg = src => new Promise((r, j) => { const i = new Image(); i.onload = () => r(i); i.onerror = j; i.src = src; });
+  function trim(cv) {
+    const ctx = cv.getContext('2d'), { width: w, height: h } = cv, d = ctx.getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 16) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) return null;
+    const p = 6, o = document.createElement('canvas'); o.width = x1 - x0 + 1 + p * 2; o.height = y1 - y0 + 1 + p * 2;
+    o.getContext('2d').drawImage(cv, x0 - p, y0 - p, o.width, o.height, 0, 0, o.width, o.height); return o;
+  }
+  async function processImg(src, maxW) {
+    const im = await loadImg(src); let w = maxW, out = '';
+    for (let k = 0; k < 4; k++) {
+      const s = Math.min(1, w / im.width, w / im.height), cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(im.width * s)); cv.height = Math.max(1, Math.round(im.height * s));
+      const ctx = cv.getContext('2d'); ctx.drawImage(im, 0, 0, cv.width, cv.height);
+      const id = ctx.getImageData(0, 0, cv.width, cv.height), d = id.data;
+      for (let i = 0; i < d.length; i += 4) { const m = Math.min(d[i], d[i + 1], d[i + 2]); if (m > 232) d[i + 3] = 0; else if (m > 200) d[i + 3] = Math.round(d[i + 3] * (232 - m) / 32); }
+      ctx.putImageData(id, 0, 0); out = (trim(cv) || cv).toDataURL('image/png');
+      if (out.length < 150000) break; w = Math.round(w * 0.72);
+    }
+    return out;
+  }
+  const readFile = f => new Promise((r, j) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.onerror = j; fr.readAsDataURL(f); });
+  $('#sigFile').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { CD.sig = await processImg(await readFile(f), 520); imgPrev(); toast('ใส่ลายเซ็นแล้ว กด “บันทึกบริษัท”'); } catch (x) { toast('อ่านรูปไม่ได้'); } };
+  $('#stFile').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { CD.stamp = await processImg(await readFile(f), 420); imgPrev(); toast('ใส่ตรายางแล้ว กด “บันทึกบริษัท”'); } catch (x) { toast('อ่านรูปไม่ได้'); } };
+  $('#sigRm').onclick = () => { CD.sig = null; imgPrev(); };
+  $('#stRm').onclick = () => { CD.stamp = null; imgPrev(); };
+  const pad = $('#pad'), pctx = pad.getContext('2d'); let drawing = false, lastPt = null, inked = false;
+  const pos = e => { const r = pad.getBoundingClientRect(); return [(e.clientX - r.left) * pad.width / r.width, (e.clientY - r.top) * pad.height / r.height]; };
+  const clearPad = () => { pctx.clearRect(0, 0, pad.width, pad.height); inked = false; };
+  pad.addEventListener('pointerdown', e => { drawing = true; lastPt = pos(e); pad.setPointerCapture(e.pointerId); pctx.beginPath(); pctx.arc(lastPt[0], lastPt[1], 2.5, 0, 7); pctx.fillStyle = '#0b2a8a'; pctx.fill(); inked = true; });
+  pad.addEventListener('pointermove', e => { if (!drawing) return; const p = pos(e); pctx.strokeStyle = '#0b2a8a'; pctx.lineWidth = 5; pctx.lineCap = pctx.lineJoin = 'round'; pctx.beginPath(); pctx.moveTo(lastPt[0], lastPt[1]); pctx.lineTo(p[0], p[1]); pctx.stroke(); lastPt = p; });
+  ['pointerup', 'pointercancel'].forEach(t => pad.addEventListener(t, () => { drawing = false; }));
+  $('#sigDraw').onclick = () => { $('#padWrap').hidden = false; clearPad(); };
+  $('#padClr').onclick = clearPad; $('#padX').onclick = () => { $('#padWrap').hidden = true; };
+  $('#padOk').onclick = async () => { if (!inked) return toast('วาดลายเซ็นก่อน'); const t = trim(pad); if (!t) return; CD.sig = await processImg(t.toDataURL('image/png'), 520); $('#padWrap').hidden = true; imgPrev(); toast('ใส่ลายเซ็นแล้ว กด “บันทึกบริษัท”'); };
+
+  /* ================= settings ================= */
+  function renderSettings() {
+    const u = S.user; if (!u) return;
+    $('#meLine').innerHTML = `<b>${esc(u.name)}</b> (${esc(u.username)}) · <span class="badge${u.role === 'admin' ? ' r' : ''}">${u.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ผู้ใช้ทั่วไป'}</span>`;
+    $('#urlNow').textContent = API.url();
+    sysInfo();
+  }
+  function sysInfo(extra) {
+    const l = (extra && extra.loader) || {};
+    const rows = [['เวอร์ชันแอป (หน้าเว็บ)', CFG.VERSION], ['เวอร์ชันระบบ (backend)', API.backendVersion || '…']];
+    if (extra) {
+      rows.push(['Code.gs จาก', `${l.ref || '-'}${l.from ? ' · ' + ({ github: 'GitHub', cache: 'แคช', backup: 'ตัวสำรอง' }[l.from] || l.from) : ''}`]);
+      if (l.backupAt) rows.push(['สำรองล่าสุด', new Date(l.backupAt).toLocaleString('th-TH')]);
+      if (l.fetchError) rows.push(['หมายเหตุ', 'ดึงจาก GitHub ไม่ได้ ใช้ตัวสำรองอยู่']);
+      if (l.loaderVersion) rows.push(['Loader', 'v' + l.loaderVersion]);
+    }
+    $('#sysInfo').innerHTML = rows.map(r => `<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('');
+  }
+  async function loadSystem() {
+    renderSettings();
+    try { const p = await API.call('ping'); sysInfo(p); } catch (e) {}
+    if (isAdmin()) { loadUsers(); loadTags(); }
+  }
+  $('#pwForm').addEventListener('submit', e => {
+    e.preventDefault();
+    busy(e.submitter || $('#pwForm .pri'), 'กำลังเปลี่ยน…', async () => {
+      await API.call('changePassword', { oldPassword: $('#pwOld').value, newPassword: $('#pwNew').value });
+      $('#pwOld').value = $('#pwNew').value = ''; toast('เปลี่ยนรหัสผ่านแล้ว');
+    });
+  });
+  $('#logout').onclick = async () => {
+    if (!await ask('ออกจากระบบ?', 'ออกจากระบบ')) return;
+    try { await API.call('logout'); } catch (e) {}
+    API.setToken(''); LS.del('cache'); S.user = null; toLogin();
+  };
+  $('#chgUrl').onclick = () => { $('#urlIn').value = API.url(); screen('scr-url'); };
+
+  /* users */
+  let UE = null;
+  async function loadUsers() {
+    try { S.users = await API.call('users'); } catch (e) { return; }
+    $('#userList').innerHTML = S.users.map(u => `<button type="button" class="urow" data-u="${esc(u.id)}"><span><b>${esc(u.name)}</b><small>${esc(u.username)}${u.lastLogin ? ' · เข้าล่าสุด ' + esc(new Date(u.lastLogin).toLocaleDateString('th-TH')) : ''}</small></span>
+      <span class="badges"><span class="badge${u.role === 'admin' ? ' r' : ''}">${u.role === 'admin' ? 'admin' : 'ผู้ใช้'}</span>${u.active ? '' : '<span class="badge">ปิดใช้งาน</span>'}</span></button>`).join('');
+  }
+  function uForm(u) {
+    UE = u || null;
+    $('#uTitle').textContent = u ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้';
+    $('#uName').value = u ? u.name : ''; $('#uUser').value = u ? u.username : ''; $('#uUser').disabled = !!u;
+    $('#uRole').value = u ? u.role : 'user'; $('#uPass').value = ''; $('#uActive').checked = u ? u.active : true;
+    $('#uPass').required = !u; $('#uPassL').firstChild.textContent = u ? 'ตั้งรหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)' : 'รหัสผ่าน';
+    $('#uActL').hidden = !u;
+  }
+  $('#userList').addEventListener('click', e => { const b = e.target.closest('[data-u]'); if (!b) return; uForm(S.users.find(x => x.id === b.dataset.u)); $('#uForm').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  $('#uClear').onclick = () => uForm(null);
+  $('#uForm').addEventListener('submit', e => {
+    e.preventDefault();
+    busy(e.submitter || $('#uForm .pri'), 'กำลังบันทึก…', async () => {
+      const user = { id: UE ? UE.id : null, name: $('#uName').value, username: $('#uUser').value, role: $('#uRole').value, password: $('#uPass').value, active: $('#uActive').checked };
+      await API.call('saveUser', { user }); uForm(null); await loadUsers(); toast('บันทึกผู้ใช้แล้ว');
+    });
+  });
+
+  /* backend version / rollback */
+  let tagsLoaded = false;
+  async function loadTags() {
+    if (tagsLoaded) return;
+    try {
+      const r = await fetch(`https://api.github.com/repos/${CFG.REPO}/tags?per_page=30`); if (!r.ok) return;
+      const tags = await r.json(); tagsLoaded = true;
+      $('#refSel').innerHTML = '<option value="main">main (ล่าสุด)</option>' + tags.map(t => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('');
+    } catch (e) {}
+    try { const s = await API.call('system'); if (s.loader) $('#refSel').value = s.loader.ref; $('#sysLinks').innerHTML = `<a href="${esc(s.sheetUrl)}" target="_blank" rel="noopener">เปิด Google Sheet</a> · <a href="${esc(s.folderUrl)}" target="_blank" rel="noopener">เปิดโฟลเดอร์ไฟล์</a>`; } catch (e) {}
+  }
+  $('#refSet').onclick = async () => {
+    const ref = $('#refSel').value;
+    if (!await ask(`เปลี่ยน backend ไปใช้เวอร์ชัน “${ref}” ?`, 'เปลี่ยน')) return;
+    busy($('#refSet'), 'กำลังเปลี่ยน…', async () => { const info = await API.call('setCodeRef', { ref }); const p = await API.call('ping'); sysInfo(p); toast('ใช้ backend เวอร์ชัน ' + info.ref + ' แล้ว'); });
+  };
+  $('#logBox').addEventListener('toggle', async e => {
+    if (!e.target.open) return;
+    $('#logList').textContent = 'กำลังโหลด…';
+    try {
+      const rows = await API.call('log');
+      $('#logList').innerHTML = rows.map(r => `<div><span>${esc(new Date(r.time).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }))}</span><span><b>${esc(r.username)}</b> ${esc(r.action)} ${esc(r.detail)}</span></div>`).join('') || 'ยังไม่มีบันทึก';
+    } catch (err) { $('#logList').textContent = err.message; }
+  });
+
+  /* ================= version / update / PWA ================= */
+  function registerSW() {
+    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  async function latestVersion() {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' }); return r.ok ? r.json() : null;
+  }
+  async function checkVersion() {
+    try { const v = await latestVersion(); if (v && v.version !== CFG.VERSION) { $('#updV').textContent = v.version; $('#updBar').hidden = false; } } catch (e) {}
+  }
+  async function updateSystem(btn) {
+    const msg = $('#updMsg');
+    await busy(btn, 'กำลังอัปเดต…', async () => {
+      msg.textContent = 'กำลังดึง backend ล่าสุดจาก GitHub…';
+      try { const j = await API.refreshBackend(); if (j && j.version) msg.textContent = 'backend เวอร์ชัน ' + j.version; } catch (e) { msg.textContent = 'อัปเดต backend ไม่สำเร็จ (จะใช้ตัวเดิม)'; }
+      if ('serviceWorker' in navigator) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r => r.update().catch(() => {}))); }
+      if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); }
+      toast('อัปเดตแล้ว กำลังโหลดใหม่…');
+      setTimeout(() => location.reload(), 600);
+    });
+  }
+  $('#updSys').onclick = () => updateSystem($('#updSys'));
+  $('#updNow').onclick = () => updateSystem($('#updNow'));
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent), standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  if (isIOS && !standalone) $('#iosHelp').open = true;
+
+  boot();
+})();

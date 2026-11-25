@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HugNa · ใบหัก ณ ที่จ่าย</title>
+<meta name="theme-color" content="#c4161c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HugNa">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css?v=1.0.0">
+</head>
+<body>
+
+<!-- ===== หน้าเริ่มต้น ===== -->
+<div id="boot" class="screen center"><div class="seal big">50</div><p class="mute">กำลังโหลด…</p><p id="bootErr" class="err" hidden></p><button type="button" id="bootRetry" hidden>ลองใหม่</button></div>
+
+<div id="scr-url" class="screen center" hidden>
+  <form class="card auth" id="urlForm">
+    <div class="seal big">50</div>
+    <h1>ตั้งค่าระบบ HugNa</h1>
+    <p class="mute">วาง URL ของ Apps Script Web App (ลงท้ายด้วย <code>/exec</code>) ตามขั้นตอนในไฟล์ SETUP.md</p>
+    <label>URL ระบบ<input id="urlIn" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec" required></label>
+    <button class="pri" type="submit">บันทึกและเชื่อมต่อ</button>
+    <p class="err" id="urlErr" hidden></p>
+  </form>
+</div>
+
+<div id="scr-login" class="screen center" hidden>
+  <form class="card auth" id="loginForm" autocomplete="on">
+    <div class="seal big">50</div>
+    <h1>เข้าสู่ระบบ HugNa</h1>
+    <label>ชื่อผู้ใช้<input id="lgUser" autocomplete="username" autocapitalize="none" required></label>
+    <label>รหัสผ่าน<input id="lgPass" type="password" autocomplete="current-password" required></label>
+    <button class="pri" type="submit">เข้าสู่ระบบ</button>
+    <p class="err" id="lgErr" hidden></p>
+    <button type="button" class="link" id="lgUrl">เปลี่ยน URL ระบบ</button>
+  </form>
+</div>
+
+<div id="scr-setup" class="screen center" hidden>
+  <form class="card auth" id="setupForm">
+    <div class="seal big">50</div>
+    <h1>ตั้งค่าครั้งแรก</h1>
+    <p class="mute">ยังไม่มีผู้ใช้ในระบบ สร้างบัญชีผู้ดูแล (admin) คนแรก</p>
+    <label>ชื่อที่แสดง<input id="suName" required placeholder="เช่น คุณเมย์"></label>
+    <label>ชื่อผู้ใช้ (a-z, 0-9)<input id="suUser" autocapitalize="none" required pattern="[A-Za-z0-9._\-]{3,30}"></label>
+    <label>รหัสผ่าน (อย่างน้อย 6 ตัว)<input id="suPass" type="password" autocomplete="new-password" minlength="6" required></label>
+    <label>ยืนยันรหัสผ่าน<input id="suPass2" type="password" autocomplete="new-password" minlength="6" required></label>
+    <button class="pri" type="submit">สร้างบัญชีและเริ่มใช้งาน</button>
+    <p class="err" id="suErr" hidden></p>
+  </form>
+</div>
+
+<!-- ===== แอป ===== -->
+<div id="app" hidden>
+  <header class="top">
+    <div class="brand"><div class="seal">50</div><b>HugNa</b></div>
+    <select id="coSel" aria-label="ออกในนามบริษัท"></select>
+  </header>
+  <div class="updbar" id="updBar" hidden><span>มีเวอร์ชันใหม่ <b id="updV"></b></span><button type="button" id="updNow">อัปเดตเลย</button></div>
+  <nav class="nav" id="nav">
+    <a href="#list" data-v="list"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg><span>เอกสาร</span></a>
+    <a href="#edit" data-v="edit"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>ออกใบใหม่</span></a>
+    <a href="#companies" data-v="companies" class="adm"><svg viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M9 20v-6h6v6"/></svg><span>บริษัท</span></a>
+    <a href="#settings" data-v="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/></svg><span>ตั้งค่า</span></a>
+  </nav>
+
+  <main>
+    <!-- รายการเอกสาร -->
+    <section class="view" id="v-list">
+      <div class="filters">
+        <input id="q" type="search" placeholder="ค้นหาชื่อ เลขที่ หรือเลขผู้เสียภาษี" aria-label="ค้นหา">
+        <input id="mon" type="month" aria-label="เดือนที่ออก">
+      </div>
+      <div class="kpis" id="kpis"></div>
+      <div class="cards" id="certCards"></div>
+    </section>
+
+    <!-- ออกใบ / แก้ไข -->
+    <section class="view" id="v-edit">
+      <div class="seg mobile-only" id="editSeg"><button type="button" data-m="form" class="on">กรอกข้อมูล</button><button type="button" data-m="preview">ดูตัวอย่าง</button></div>
+      <div class="ed">
+        <form class="pane" id="f" autocomplete="off">
+          <div class="note" id="editTag" hidden></div>
+          <div class="callout" id="noco" hidden>ยังไม่มีบริษัทผู้หักภาษี <a class="btn pri adm" href="#companies">+ เพิ่มบริษัท</a><span class="usr-only">ให้ผู้ดูแลระบบเพิ่มบริษัทก่อน</span></div>
+          <fieldset><legend>เอกสาร</legend>
+            <div class="g3"><label>เล่มที่<input data-k="book" inputmode="numeric"></label><label>เลขที่<input data-k="no" id="noIn" inputmode="numeric"></label><label>วันที่ออก<input type="date" data-k="issueDate"></label></div>
+          </fieldset>
+          <fieldset><legend>ผู้ถูกหักภาษี</legend>
+            <div class="seg" id="ptype"><button type="button" data-v="j">นิติบุคคล</button><button type="button" data-v="p">บุคคลธรรมดา</button></div>
+            <label>ชื่อ<input data-k="payeeName" list="payees" placeholder="เช่น บริษัท ตัวอย่าง จำกัด"></label>
+            <datalist id="payees"></datalist>
+            <div class="g2"><label>เลขประจำตัวผู้เสียภาษี (13 หลัก)<input data-k="payeeTaxId" inputmode="numeric" maxlength="13"></label><label>สาขา<input data-k="payeeBranch" placeholder="สำนักงานใหญ่"></label></div>
+            <label>ที่อยู่<textarea data-k="payeeAddress" rows="2"></textarea></label>
+            <div class="g2"><label>ยื่นในแบบ<select data-k="form" id="formSel"></select></label><label>ลำดับที่ในแบบ<input data-k="seq" inputmode="numeric"></label></div>
+          </fieldset>
+          <fieldset><legend>รายการเงินได้ที่จ่าย</legend>
+            <div class="chips" id="presets"></div>
+            <div id="items" class="stackgap"></div>
+            <button type="button" class="ghost" id="addItem">+ เพิ่มรายการ</button>
+            <div class="tot" id="tot"></div>
+          </fieldset>
+          <fieldset><legend>เงื่อนไข</legend>
+            <div class="g2"><label>ผู้จ่ายเงิน<select data-k="payer" id="payerSel"></select></label><label id="poL">ระบุ<input data-k="payerOther"></label></div>
+            <details><summary>เงินสมทบกองทุน (ถ้ามี)</summary>
+              <div class="g3"><label>กบข./กสจ./กองทุนครู<input data-k="funds.gpf" inputmode="decimal"></label><label>ประกันสังคม<input data-k="funds.sso" inputmode="decimal"></label><label>สำรองเลี้ยงชีพ<input data-k="funds.pvd" inputmode="decimal"></label></div>
+            </details>
+          </fieldset>
+          <fieldset><legend>ลายเซ็น ตรายาง และฉบับ</legend>
+            <div class="row"><label class="chk"><input type="checkbox" data-k="useSig"> ใส่ลายเซ็น</label><label class="chk"><input type="checkbox" data-k="useStamp"> ใส่ตรายาง</label></div>
+            <label>ฉบับที่ส่งออก<select id="copiesSel"><option value="both">ฉบับที่ 1 และ 2 (2 หน้า)</option><option value="1">ฉบับที่ 1 อย่างเดียว</option><option value="2">ฉบับที่ 2 อย่างเดียว</option></select></label>
+            <p class="hint" id="sigHint"></p>
+          </fieldset>
+        </form>
+        <div class="pvwrap" id="pvwrap">
+          <div class="pvbar"><span>ตัวอย่างฉบับที่ 1 · A4</span><span id="pvState"></span></div>
+          <div id="pv"><div id="sheet"></div></div>
+        </div>
+      </div>
+      <div class="actbar">
+        <button type="button" class="pri" id="save">บันทึก</button>
+        <button type="button" id="pdf">PDF</button>
+        <button type="button" class="ghost" id="png">PNG</button>
+        <button type="button" class="ghost" id="more" aria-label="ตัวเลือกเพิ่มเติม">อื่น ๆ</button>
+      </div>
+    </section>
+
+    <!-- บริษัท (admin) -->
+    <section class="view" id="v-companies">
+      <div class="cog">
+        <div>
+          <div class="rowhead"><h2>บริษัทผู้หักภาษี</h2><button type="button" id="coNew">+ เพิ่ม</button></div>
+          <div class="stackgap" id="coCards"></div>
+        </div>
+        <form class="pane" id="coF" autocomplete="off">
+          <fieldset><legend id="coTitle">เพิ่มบริษัท</legend>
+            <label>ชื่อบริษัท / ผู้หักภาษี<input data-c="name" required placeholder="บริษัท ของฉัน จำกัด"></label>
+            <div class="g2"><label>เลขประจำตัวผู้เสียภาษี<input data-c="taxId" inputmode="numeric" maxlength="13"></label><label>สาขา<input data-c="branch" placeholder="สำนักงานใหญ่"></label></div>
+            <label>ที่อยู่<textarea data-c="address" rows="2"></textarea></label>
+            <div class="g2"><label>ชื่อผู้ลงนาม<input data-c="signer"></label><label>ตำแหน่ง<input data-c="signerTitle" placeholder="กรรมการผู้จัดการ"></label></div>
+          </fieldset>
+          <fieldset><legend>ลายเซ็น</legend>
+            <div class="imgprev" id="sigPrev"></div>
+            <div class="row"><button type="button" id="sigDraw">วาดลายเซ็น</button><label class="btn">อัปโหลดรูป<input type="file" accept="image/*" id="sigFile" hidden></label><button type="button" class="ghost danger" id="sigRm">ลบ</button></div>
+            <div class="stackgap" id="padWrap" hidden><canvas id="pad" width="900" height="300"></canvas><div class="row"><button type="button" class="pri" id="padOk">ใช้ลายเซ็นนี้</button><button type="button" class="ghost" id="padClr">ล้าง</button><button type="button" class="ghost" id="padX">ยกเลิก</button></div></div>
+          </fieldset>
+          <fieldset><legend>ตรายาง / ตราบริษัท</legend>
+            <div class="imgprev" id="stPrev"></div>
+            <div class="row"><label class="btn">อัปโหลดรูปตรายาง<input type="file" accept="image/*" id="stFile" hidden></label><button type="button" class="ghost danger" id="stRm">ลบ</button></div>
+            <p class="hint">ใช้รูปพื้นขาวหรือพื้นโปร่งใส ระบบลบพื้นขาวให้อัตโนมัติ ไฟล์เก็บใน Google Drive ของระบบ</p>
+          </fieldset>
+          <div class="row"><button type="submit" class="pri" id="coSave">บันทึกบริษัท</button><button type="button" class="ghost" id="coCancel">ล้างฟอร์ม</button></div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ตั้งค่า -->
+    <section class="view" id="v-settings">
+      <div class="setgrid">
+        <div class="pane">
+          <h2>บัญชีของฉัน</h2>
+          <p id="meLine"></p>
+          <details><summary>เปลี่ยนรหัสผ่าน</summary>
+            <form id="pwForm" class="stackgap">
+              <label>รหัสผ่านเดิม<input type="password" id="pwOld" autocomplete="current-password" required></label>
+              <label>รหัสผ่านใหม่<input type="password" id="pwNew" autocomplete="new-password" minlength="6" required></label>
+              <button class="pri" type="submit">เปลี่ยนรหัสผ่าน</button>
+            </form>
+          </details>
+          <div class="row" style="margin-top:12px"><button type="button" class="ghost danger" id="logout">ออกจากระบบ</button></div>
+        </div>
+
+        <div class="pane">
+          <h2>ระบบ</h2>
+          <dl class="kv" id="sysInfo"></dl>
+          <div class="row"><button type="button" class="pri" id="updSys">อัปเดตระบบเป็นเวอร์ชันล่าสุด</button></div>
+          <p class="hint" id="updMsg"></p>
+          <details id="iosHelp"><summary>ติดตั้งเป็นแอปบน iPhone</summary>
+            <ol class="hint"><li>เปิดหน้านี้ด้วย Safari</li><li>กดปุ่มแชร์ (สี่เหลี่ยมมีลูกศรขึ้น)</li><li>เลือก “เพิ่มไปยังหน้าจอโฮม” แล้วกด “เพิ่ม”</li></ol>
+          </details>
+          <details><summary>URL ระบบ (Apps Script)</summary>
+            <p class="hint" id="urlNow" style="word-break:break-all"></p>
+            <button type="button" class="ghost" id="chgUrl">เปลี่ยน URL</button>
+          </details>
+        </div>
+
+        <div class="pane adm">
+          <h2>ผู้ใช้งาน</h2>
+          <div class="stackgap" id="userList"></div>
+          <form id="uForm" class="stackgap" autocomplete="off">
+            <h3 id="uTitle">เพิ่มผู้ใช้</h3>
+            <div class="g2"><label>ชื่อที่แสดง<input id="uName" required></label><label>ชื่อผู้ใช้<input id="uUser" autocapitalize="none" required></label></div>
+            <div class="g2"><label>สิทธิ์<select id="uRole"><option value="user">ผู้ใช้ทั่วไป</option><option value="admin">ผู้ดูแล (admin)</option></select></label><label id="uPassL">รหัสผ่าน<input id="uPass" type="password" autocomplete="new-password" minlength="6"></label></div>
+            <label class="chk" id="uActL"><input type="checkbox" id="uActive" checked> เปิดใช้งาน</label>
+            <div class="row"><button type="submit" class="pri">บันทึกผู้ใช้</button><button type="button" class="ghost" id="uClear">ล้างฟอร์ม</button></div>
+            <p class="hint">ผู้ใช้ทั่วไป: ออกใบ แก้/ลบใบที่ตัวเองออก · ผู้ดูแล: จัดการบริษัท ผู้ใช้ และทุกเอกสาร</p>
+          </form>
+        </div>
+
+        <div class="pane adm">
+          <h2>เวอร์ชัน backend และประวัติ</h2>
+          <p class="hint">เลือกเวอร์ชัน Code.gs ที่ระบบใช้ — ใช้ย้อนกลับเมื่ออัปเดตแล้วมีปัญหา</p>
+          <div class="g2"><label>เวอร์ชัน<select id="refSel"><option value="main">main (ล่าสุด)</option></select></label><div style="align-self:end"><button type="button" id="refSet">ใช้เวอร์ชันนี้</button></div></div>
+          <details id="logBox"><summary>บันทึกการใช้งานล่าสุด</summary><div id="logList" class="loglist"></div></details>
+          <p class="hint" id="sysLinks"></p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="ov" id="ov" hidden><div class="dlg" id="dlg"></div></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="js/config.js?v=1.0.0"></script>
+<script src="js/api.js?v=1.0.0"></script>
+<script src="js/cert.js?v=1.0.0"></script>
+<script src="js/app.js?v=1.0.0"></script>
+</body>
+</html>
