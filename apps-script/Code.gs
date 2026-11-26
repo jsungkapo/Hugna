@@ -9,7 +9,7 @@
  * --------------------------------------------------------------
  */
 var HUGNA_BACKEND = true;
-var VERSION = '1.3.1';
+var VERSION = '1.4.0';
 
 var SESSION_DAYS = 30;
 var HASH_ROUNDS = 300;
@@ -29,7 +29,7 @@ var SCHEMA = {
 };
 var JSON_FIELDS = { items: 1, funds: 1, coSnap: 1, tags: 1, defItem: 1, favs: 1 };
 var JSON_ARRAYS = { items: 1, tags: 1, favs: 1 };
-var TAG_COLORS = ['#c4161c', '#d9480f', '#e67700', '#2b8a3e', '#0b7285', '#1c64d1', '#6741d9', '#a61e4d', '#495057'];
+var TAG_COLORS = ['#2b8a3e', '#e67700', '#c4161c', '#d9480f', '#0b7285', '#1c64d1', '#6741d9', '#a61e4d', '#495057'];
 
 /* ================= entry points ================= */
 function doGet(e) { return respond_((e && e.parameter) || {}); }

@@ -585,7 +585,7 @@
     };
   }
   function tagManager() {
-    const COLORS = ['#c4161c', '#d9480f', '#e67700', '#2b8a3e', '#0b7285', '#1c64d1', '#6741d9', '#a61e4d', '#495057'];
+    const COLORS = ['#2b8a3e', '#e67700', '#c4161c', '#d9480f', '#0b7285', '#1c64d1', '#6741d9', '#a61e4d', '#495057'];
     let color = COLORS[S.tags.length % COLORS.length];
     dialog(`<h3 style="margin:0">จัดการกลุ่ม / tag</h3><div id="tmList"></div>
       <div class="stackgap"><input id="tmName" placeholder="ชื่อกลุ่มใหม่ เช่น ช่างภาพ, ซื้อสินค้า"><div class="swatches" id="tmSw"></div>
