@@ -14,7 +14,7 @@
  * ห้ามแก้ไฟล์นี้บ่อย — ถ้าแก้ต้อง Deploy ใหม่ทุกครั้ง
  * --------------------------------------------------------------
  */
-var LOADER_VERSION = '1';
+var LOADER_VERSION = '2';
 var REPO = 'jsungkapo/Hugna';
 var CODE_PATH = 'apps-script/Code.gs';
 var CACHE_SECONDS = 300;          // แคชโค้ด 5 นาที
@@ -29,14 +29,29 @@ function doPost(e) { return run_('doPost', e); }
  * เพื่อให้ Google ขอสิทธิ์ที่ระบบต้องใช้ทั้งหมด
  */
 function authorize() {
-  SpreadsheetApp.getActiveSpreadsheet().getName();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ss.getName();
   DriveApp.getRootFolder().getName();
   UrlFetchApp.fetch('https://raw.githubusercontent.com/' + REPO + '/main/version.json', { muteHttpExceptions: true });
   CacheService.getScriptCache().put('auth_test', '1', 10);
   PropertiesService.getScriptProperties().getProperty('CODE_REF');
   LockService.getScriptLock();
+  ScriptApp.getOAuthToken();
   Utilities.getUuid();
   Logger.log('อนุญาตสิทธิ์เรียบร้อย — Loader ' + LOADER_VERSION);
+}
+
+/**
+ * ไม่ต้องรัน — มีไว้ให้ Google เห็นว่าระบบต้องใช้สิทธิ์ "เขียน" ชีตและ Drive
+ * (Google ดูสิทธิ์จากโค้ดในไฟล์นี้เท่านั้น ไม่ได้ดูจาก Code.gs บน GitHub)
+ */
+function scopesNeeded_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ss.insertSheet('x').getRange(1, 1).setValue('x');
+  var folder = DriveApp.createFolder('x');
+  folder.createFile(Utilities.newBlob('x')).setTrashed(true);
+  DriveApp.getFileById('x').getBlob();
+  DriveApp.getFolderById('x').createFolder('x');
 }
 
 var MODULE_ = null;

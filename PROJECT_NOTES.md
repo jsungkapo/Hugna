@@ -92,6 +92,7 @@ Apps Script Web App  …/exec
 4. `git add -A && git commit -m "vX.Y.Z: ..." && git tag vX.Y.Z && git push origin main --tags`
 - หน้าเว็บ: GitHub Pages อัปเดตใน 1–2 นาที, ผู้ใช้เห็นแถบ "มีเวอร์ชันใหม่" หรือกด "อัปเดตระบบเป็นเวอร์ชันล่าสุด" ในแท็บตั้งค่า (ล้างแคช SW + เรียก `?refresh=1`)
 - backend: Loader ดึง Code.gs ใหม่ภายใน 5 นาที หรือทันทีเมื่อเรียก `<exec>?refresh=1`
+- สิทธิ์ (OAuth scope) ของระบบมาจากโค้ดใน Loader.gs เท่านั้น — ถ้า Code.gs ใช้คำสั่งเขียน/บริการที่ Loader ไม่ได้อ้างถึง ต้องเพิ่มใน `scopesNeeded_()` หรือ `authorize()`
 - ถ้า Code.gs ใช้บริการ Google ใหม่ (เช่น GmailApp, CalendarApp) → ต้องเพิ่มใน `authorize()` ของ Loader.gs, เพิ่ม LOADER_VERSION, แล้ว**บอกผู้ใช้ให้วาง Loader ใหม่ + Deploy (Manage deployments → New version)** ตาม SETUP.md
 
 ## การย้อนเวอร์ชัน
@@ -109,6 +110,9 @@ Apps Script Web App  …/exec
 - `bootstrap` ส่งเอกสารทั้งหมด — ถ้าเกินหลายพันใบ ควรทำแบ่งหน้า/กรองตามปีฝั่ง backend
 
 ## สถานะล่าสุด
+- v1.4.2 (2026-11-26): Loader v2 — แก้ error "สิทธิ์ไม่เพียงพอ DriveApp.createFolder (auth/drive)": Apps Script เดาสิทธิ์จากโค้ดใน Loader เท่านั้น
+  Loader v1 เรียก DriveApp แบบอ่านอย่างเดียว เลยได้ drive.readonly → เพิ่ม `scopesNeeded_()` ที่อ้างถึงคำสั่งเขียน (ไม่ได้รัน) ให้ได้สิทธิ์ drive/spreadsheets เต็ม
+  ผู้ใช้ต้องวาง Loader ใหม่ + รัน authorize + Deploy เวอร์ชันใหม่ (ยังไม่ยืนยันว่าทำแล้ว)
 - v1.4.1 (2026-11-26): ไอคอนแอป (iPhone/Android) มีคำว่า Hugna ใต้มาสคอต
 - v1.4.0 (2026-11-26): ธีมสีเขียว-ส้มตามโลโก้, โลโก้ในหน้าแอป/หน้าล็อกอิน, ไอคอนแท็บเบราว์เซอร์และไอคอน iPhone ใหม่
 - v1.3.1 (2026-11-26): login เร็วขึ้น — `login`/`setup` รับ `withData:true` แล้วส่งข้อมูล bootstrap กลับมาในคำขอเดียว; backend แคชการอ่านชีตภายในคำขอ (ROWS_/HEAD_, ล้างเมื่อเขียนหรือเข้า lock), อ่านแท็บด้วย getDataRange ครั้งเดียว, ตรวจหัวคอลัมน์ครั้งเดียวต่อเวอร์ชัน (CacheService 6 ชม.), แคชเซสชัน 6 ชม.
