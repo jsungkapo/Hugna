@@ -9,7 +9,7 @@
   const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
   const thisBook = () => String(new Date().getFullYear() + 543);
 
-  const S = { user: null, companies: [], certs: [], payees: [], tags: [], pFilter: null, lTag: '', coId: '', imgs: {}, users: [], started: false, copies: 'both', mode: 'form' };
+  const S = { user: null, companies: [], certs: [], payees: [], tags: [], files: [], fileCache: {}, pFilter: null, lTag: '', coId: '', imgs: {}, users: [], started: false, copies: 'both', mode: 'form' };
   let D = null, CD = null;
   const isAdmin = () => S.user && S.user.role === 'admin';
   const co = id => S.companies.find(c => c.id === id);
@@ -50,10 +50,10 @@
   }
   $('#bootRetry').onclick = () => { $('#bootRetry').hidden = true; showErr($('#bootErr'), ''); boot(); };
   async function loadAll() { const d = await API.call('bootstrap'); apply(d); saveCache(); }
-  function saveCache() { LS.set('cache', { user: S.user, companies: S.companies, certs: S.certs, payees: S.payees, tags: S.tags }); }
+  function saveCache() { LS.set('cache', { user: S.user, companies: S.companies, certs: S.certs, payees: S.payees, tags: S.tags, files: S.files }); }
   function apply(d) {
     S.user = d.user; S.user.favs = S.user.favs || []; S.companies = d.companies || []; S.certs = d.certs || [];
-    S.payees = d.payees || []; S.tags = d.tags || [];
+    S.payees = d.payees || []; S.tags = d.tags || []; S.files = d.files || [];
     const last = LS.get('lastCo', '');
     S.coId = co(last) ? last : (co(S.coId) ? S.coId : (S.companies[0] && S.companies[0].id) || '');
   }
@@ -158,7 +158,7 @@
       <span class="h"><b>${esc(c.book)}/${esc(c.no)}</b><span>${esc(dShort(c.issueDate))} · ${esc(C.FORMS[c.form] || '')}</span></span>
       <span class="nm">${esc(c.payeeName)}</span>
       <span class="am"><span>ยอดจ่าย <b>${money(c.totalAmount)}</b></span><span class="t">ภาษี <b>${money(c.totalTax)}</b></span></span>
-      <span class="hint">โดย ${esc(c.createdByName || '-')}</span></button>`).join('')
+      <span class="hint">โดย ${esc(c.createdByName || '-')}${filesOf('cert', c.id).length ? ' · 📎 ' + filesOf('cert', c.id).length + ' ไฟล์' : ''}</span></button>`).join('')
       : `<div class="empty">${S.certs.some(c => c.companyId === S.coId) ? 'ไม่พบเอกสารที่ตรงกับตัวกรอง' : 'ยังไม่มีเอกสารของบริษัทนี้ — กด “ออกใบใหม่”'}</div>`;
   }
   $('#q').addEventListener('input', renderList);
@@ -173,7 +173,7 @@
   function blank() {
     return { id: null, companyId: S.coId, payeeId: null, book: thisBook(), no: '', issueDate: todayISO(), form: 6, seq: '',
       payeeType: 'j', payeeName: '', payeeTaxId: '', payeeBranch: '', payeeAddress: '', payer: 0, payerOther: '',
-      items: [{ id: uid(), cat: 'c5', desc: 'ค่าบริการ', date: todayISO(), amount: '', rate: 3 }],
+      items: [{ id: uid(), cat: 'c5', desc: 'ค่าบริการ', date: todayISO(), amount: '', rate: 3 }], _pending: [],
       funds: { gpf: '', sso: '', pvd: '' }, useSig: true, useStamp: true };
   }
   function nextNo(coId, book) {
@@ -204,7 +204,7 @@
     const c = co(D.companyId);
     const miss = c ? [!c.sigFileId && 'ลายเซ็น', !c.stampFileId && 'ตรายาง'].filter(Boolean) : [];
     $('#sigHint').textContent = miss.length ? `บริษัทนี้ยังไม่มี${miss.join('และ')}` + (isAdmin() ? ' — เพิ่มได้ที่แท็บ “บริษัท”' : '') : '';
-    renderItems(); preview();
+    renderItems(); preview(); renderAttach();
   }
   function renderItems() {
     $('#items').innerHTML = D.items.map((it, i) => {
@@ -287,14 +287,20 @@
 
   $('#save').onclick = () => busy($('#save'), 'กำลังบันทึก…', async () => {
     if (!D.companyId || !co(D.companyId)) throw new Error('เลือกหรือเพิ่มบริษัทผู้หักภาษีก่อน');
-    const rec = await API.call('saveCert', { cert: D });
+    const pend = D._pending || [];
+    const payload = Object.assign({}, D); delete payload._pending;
+    const rec = await API.call('saveCert', { cert: payload });
     S.certs = S.certs.filter(x => x.id !== rec.id).concat(rec);
     if (rec.payeeId && !S.payees.some(p => p.id === rec.payeeId)) {
       S.payees.push({ id: rec.payeeId, type: rec.payeeType, name: rec.payeeName, taxId: rec.payeeTaxId, branch: rec.payeeBranch, address: rec.payeeAddress, tags: [], defItem: {}, form: rec.form, createdBy: S.user.id });
       renderPayees();
     }
     saveCache();
-    D = clone(rec); fillForm(); renderList(); payeeList(); toast('บันทึกแล้ว เลขที่ ' + rec.book + '/' + rec.no);
+    D = clone(rec); D._pending = [];
+    let failed = 0;
+    for (const f of pend) { try { await uploadNow('cert', rec.id, f); } catch (e) { failed++; D._pending.push(f); } }
+    fillForm(); renderList(); payeeList();
+    toast('บันทึกแล้ว เลขที่ ' + rec.book + '/' + rec.no + (pend.length ? (failed ? ` · แนบไฟล์ไม่สำเร็จ ${failed} ไฟล์ กดบันทึกอีกครั้ง` : ` · แนบ ${pend.length} ไฟล์แล้ว`) : ''));
   });
   function fname(ext) { return `WHT-50tawi-${String(D.book).replace(/[^\w-]/g, '')}-${String(D.no || 'draft').replace(/[^\w-]/g, '')}.${ext}`; }
   const copiesList = () => S.copies === '1' ? [1] : S.copies === '2' ? [2] : [1, 2];
@@ -458,7 +464,7 @@
       const d = p.defItem || {};
       return `<div class="pc"><button type="button" class="star${isFav(p.id) ? ' on' : ''}" data-star="${esc(p.id)}" aria-label="${isFav(p.id) ? 'เอาออกจากรายการโปรด' : 'ตั้งเป็นรายการโปรด'}">${isFav(p.id) ? '★' : '☆'}</button>
         <div class="pb"><b>${esc(p.name)}</b><small>${p.type === 'p' ? 'บุคคลธรรมดา' : 'นิติบุคคล'}${p.taxId ? ' · ' + esc(p.taxId) : ''}</small>
-        ${(p.tags || []).length ? `<span class="tagrow">${p.tags.map(tagChip).join('')}</span>` : ''}
+        ${(p.tags || []).length || filesOf('payee', p.id).length ? `<span class="tagrow">${p.tags.map(tagChip).join('')}${filesOf('payee', p.id).some(f => f.kind === 'idcard') ? '<span class="tg">🪪 มีรูปบัตร</span>' : ''}</span>` : ''}
         ${d.desc || d.rate ? `<small>รายการประจำ: ${esc(d.desc || '')} ${d.rate ? esc(d.rate) + '%' : ''}</small>` : ''}</div>
         <div class="pa"><button type="button" class="pri" data-use="${esc(p.id)}">ออกใบ</button><button type="button" class="ghost" data-pedit="${esc(p.id)}">แก้ไข</button></div></div>`;
     }).join('') : `<div class="empty">${S.pFilter === 'fav' ? 'ยังไม่มีรายการโปรด — กด ☆ ที่รายชื่อเพื่อเพิ่ม' : S.payees.length ? 'ไม่พบรายชื่อที่ตรงกับตัวกรอง' : 'ยังไม่มีรายชื่อ — กด “+ เพิ่มรายชื่อ” หรือออกใบแล้วระบบจะเก็บรายชื่อให้เอง'}</div>`;
@@ -518,6 +524,7 @@
         <label>ชื่อ<input id="pfName" required value="${esc(P.name)}"></label>
         <div class="g2"><label>เลขผู้เสียภาษี (13 หลัก)<input id="pfTax" inputmode="numeric" maxlength="13" value="${esc(P.taxId)}"></label><label>สาขา<input id="pfBranch" value="${esc(P.branch)}" placeholder="สำนักงานใหญ่"></label></div>
         <label>ที่อยู่<textarea id="pfAddr" rows="2">${esc(P.address)}</textarea></label>
+        <div class="idbox" id="pfFiles"></div>
         <div><span class="hint">กลุ่ม / tag</span><div class="chips" id="pfTags" style="margin-top:6px"></div>
           <div class="row" style="margin-top:8px"><input id="pfNewTag" placeholder="สร้างกลุ่มใหม่ เช่น ช่างภาพ" style="flex:1"><button type="button" id="pfAddTag">+ สร้าง</button></div></div>
         <details${d.desc || d.rate ? ' open' : ''}><summary>รายการประจำ (เติมให้อัตโนมัติตอนออกใบ)</summary>
@@ -528,7 +535,22 @@
         <p class="err" id="pfErr" hidden></p>
         <div class="row">${canDel ? '<button type="button" class="ghost danger" id="pfDel" style="margin-right:auto">ลบ</button>' : ''}<button type="button" class="ghost" data-close>ยกเลิก</button><button type="submit" class="pri" id="pfSave">บันทึก</button></div>
       </form>`);
-    const drawType = () => $$('#pfType button').forEach(b => b.classList.toggle('on', b.dataset.v === P.type));
+    P._pending = P._pending || [];
+    const drawFiles = () => {
+      const kind = P.type === 'p' ? 'idcard' : 'other';
+      const saved = P.id ? filesOf('payee', P.id) : [];
+      $('#pfFiles').innerHTML = `<span class="hint">${P.type === 'p' ? 'รูปบัตรประชาชน' : 'เอกสารประกอบ (เช่น หนังสือรับรองบริษัท, ภ.พ.20)'}</span>` +
+        saved.map(f => attRow(f)).join('') + P._pending.map((f, i) => attRow(f, i)).join('') +
+        `<label class="btn">${P.type === 'p' ? '🪪 ถ่าย/เลือกรูปบัตรประชาชน' : '📎 แนบเอกสาร'}<input type="file" accept="${kind === 'idcard' ? 'image/*' : 'image/*,application/pdf'}" id="pfFileIn" hidden></label>`;
+      $('#pfFileIn').onchange = e => { const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+        busy($('#pfSave'), 'กำลังเตรียมไฟล์…', async () => {
+          const item = await prepFile(file, kind);
+          if (P.id) { await uploadNow('payee', P.id, item); toast('แนบไฟล์แล้ว'); renderPayees(); } else { P._pending.push(item); toast('จะอัปโหลดเมื่อกดบันทึก'); }
+          drawFiles();
+        }); };
+      $('#pfFiles').onclick = e => attClick(e, () => drawFiles(), P._pending, true);
+    };
+    const drawType = () => { $$('#pfType button').forEach(b => b.classList.toggle('on', b.dataset.v === P.type)); drawFiles(); };
     const drawTags = () => { $('#pfTags').innerHTML = S.tags.map(t => `<button type="button" data-tg="${esc(t.id)}" class="${P.tags.includes(t.id) ? 'on' : ''}"><i class="dot" style="background:${esc(t.color)}"></i> ${esc(t.name)}</button>`).join('') || '<span class="hint">ยังไม่มีกลุ่ม — สร้างได้ด้านล่าง</span>'; };
     drawType(); drawTags();
     $('#pfType').onclick = e => { const b = e.target.closest('button'); if (b) { P.type = b.dataset.v; drawType(); } };
@@ -548,8 +570,14 @@
         Object.assign(P, { name: $('#pfName').value, taxId: $('#pfTax').value, branch: $('#pfBranch').value, address: $('#pfAddr').value,
           defItem: { cat: $('#pfCat').value, desc: $('#pfDesc').value, rate: $('#pfRate').value } });
         try {
-          const rec = await API.call('savePayee', { payee: P });
-          S.payees = S.payees.filter(x => x.id !== rec.id).concat(rec); saveCache(); closeDlg(); renderPayees(); renderFavStrip(); renderList(); toast('บันทึกรายชื่อแล้ว');
+          const payload = Object.assign({}, P); delete payload._pending;
+          const rec = await API.call('savePayee', { payee: payload });
+          S.payees = S.payees.filter(x => x.id !== rec.id).concat(rec); P.id = rec.id;
+          const pend = P._pending.splice(0); let failed = 0;
+          for (const f of pend) { try { await uploadNow('payee', rec.id, f); } catch (x) { failed++; P._pending.push(f); } }
+          saveCache(); renderPayees(); renderFavStrip(); renderList(); fillForm();
+          if (failed) { drawFiles(); return showErr($('#pfErr'), `บันทึกรายชื่อแล้ว แต่อัปโหลดไฟล์ไม่สำเร็จ ${failed} ไฟล์ — กดบันทึกอีกครั้ง`); }
+          closeDlg(); toast('บันทึกรายชื่อแล้ว' + (pend.length ? ` · แนบ ${pend.length} ไฟล์` : ''));
         } catch (err) { showErr($('#pfErr'), err.message); }
       });
     };
@@ -593,6 +621,91 @@
       }
     };
   }
+
+  /* ================= ไฟล์แนบ ================= */
+  const KIND_LABEL = { idcard: 'บัตรประชาชน', invoice: 'Invoice', other: 'เอกสาร' };
+  const filesOf = (type, id) => id ? S.files.filter(f => f.ownerType === type && f.ownerId === id) : [];
+  const fsize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  /** รูปย่อเหลือด้านยาว 1800px (JPEG) / PDF ใช้ไฟล์เดิม */
+  async function prepFile(file, kind) {
+    if (file.type === 'application/pdf') {
+      if (file.size > 8e6) throw new Error('PDF ใหญ่เกิน 8 MB');
+      const dataUrl = await new Promise((r, j) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.onerror = j; fr.readAsDataURL(file); });
+      return { kind, name: file.name, mime: 'application/pdf', dataUrl, size: file.size };
+    }
+    const img = await Scan.prepImage(file, 1800);
+    return { kind, name: (file.name || KIND_LABEL[kind]).replace(/\.(heic|heif|png|webp)$/i, '.jpg'), mime: 'image/jpeg', dataUrl: img.dataUrl, size: Math.round(img.dataUrl.length * 0.75) };
+  }
+  async function uploadNow(ownerType, ownerId, item) {
+    const meta = await API.call('uploadFile', { ownerType, ownerId, kind: item.kind, name: item.name, dataUrl: item.dataUrl }, { timeout: 120000 });
+    S.files.push(meta); S.fileCache[meta.id] = item.dataUrl; saveCache(); return meta;
+  }
+  /** pi = index ของไฟล์ที่ยังไม่อัปโหลด (pending) */
+  function attRow(f, pi) {
+    const pend = pi !== undefined, src = pend ? f.dataUrl : S.fileCache[f.id];
+    const icon = f.mime === 'application/pdf' ? 'PDF' : src ? `<img src="${esc(src)}" alt="">` : 'IMG';
+    const canDel = pend || isAdmin() || f.createdBy === S.user.id;
+    return `<div class="att${pend ? ' pend' : ''}"><span class="fi">${icon}</span><span class="fn"><b>${esc(KIND_LABEL[f.kind] || 'ไฟล์')} · ${esc(f.name)}</b><small>${pend ? 'รออัปโหลดเมื่อกดบันทึก' : esc(new Date(f.createdAt).toLocaleDateString('th-TH')) + ' · ' + esc(f.createdByName || '')} · ${fsize(f.size)}</small></span>
+      <button type="button" class="ghost" ${pend ? `data-pview="${pi}"` : `data-fview="${esc(f.id)}"`}>ดู</button>${canDel ? `<button type="button" class="ghost danger" ${pend ? `data-pdel="${pi}"` : `data-fdel="${esc(f.id)}"`}>ลบ</button>` : ''}</div>`;
+  }
+  async function attClick(e, redraw, pendList, inForm) {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.pview) return viewFile(pendList[+b.dataset.pview], true, null, inForm);
+    if (b.dataset.pdel) { pendList.splice(+b.dataset.pdel, 1); return redraw(); }
+    if (b.dataset.fview) return viewFile(S.files.find(f => f.id === b.dataset.fview), false, redraw, inForm);
+    if (b.dataset.fdel) {
+      const f = S.files.find(x => x.id === b.dataset.fdel);
+      if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'ยืนยันลบ?'; return; }
+      await busy(b, '…', async () => { await API.call('deleteFile', { fileId: f.id }); S.files = S.files.filter(x => x.id !== f.id); saveCache(); redraw(); renderPayees(); renderList(); toast('ลบไฟล์แล้ว'); });
+    }
+  }
+  async function viewFile(f, pending, back, inForm) {
+    if (!f) return;
+    let url = pending ? f.dataUrl : S.fileCache[f.id];
+    if (!url) {
+      toast('กำลังโหลดไฟล์…');
+      try { const r = await API.call('file', { fileId: f.id }, { timeout: 90000 }); url = S.fileCache[f.id] = r.dataUrl; }
+      catch (e) { return toast(e.message); }
+      if (back) back();
+    }
+    const blob = await (await fetch(url)).blob();
+    if (f.mime === 'application/pdf') {
+      const bu = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = bu; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(bu), 60000); return;
+    }
+    if (inForm) { // อยู่ในฟอร์มรายชื่อ — เปิดรูปในแท็บใหม่ จะได้ไม่ปิดฟอร์ม
+      const bu = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = bu; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(bu), 60000); return;
+    }
+    dialog(`<h3 style="margin:0">${esc(KIND_LABEL[f.kind] || 'ไฟล์')}</h3><div class="viewer"><img src="${esc(url)}" alt="${esc(f.name)}"></div>
+      <div class="row"><button type="button" id="fvShare">บันทึก/แชร์</button><button type="button" class="pri" data-close>ปิด</button></div>`);
+    $('#fvShare').onclick = () => C.deliver(blob, f.name.replace(/[^\w.\-ก-๙ ]/g, '') || 'file.jpg');
+  }
+  function addCertFile(item) {
+    if (D.id && canEdit(D)) {
+      uploadNow('cert', D.id, item).then(() => { renderAttach(); renderList(); toast('แนบไฟล์แล้ว'); }).catch(e => { toast(e.message); });
+    } else { D._pending = D._pending || []; D._pending.push(item); toast('แนบแล้ว — จะอัปโหลดเมื่อกดบันทึก'); }
+    renderAttach();
+  }
+  function renderAttach() {
+    if (!D) return;
+    D._pending = D._pending || [];
+    const saved = filesOf('cert', D.id);
+    $('#attList').innerHTML = saved.map(f => attRow(f)).join('') + D._pending.map((f, i) => attRow(f, i)).join('') || '<p class="hint">ยังไม่มีไฟล์แนบ</p>';
+    const p = D.payeeId && S.payees.find(x => x.id === D.payeeId);
+    const ids = p ? filesOf('payee', p.id).filter(f => f.kind === 'idcard') : [];
+    $('#idNote').innerHTML = D.payeeType === 'p' ? (ids.length ? `🪪 มีรูปบัตรประชาชนของ ${esc(p.name)} ในรายชื่อแล้ว <button type="button" class="link" data-fview="${esc(ids[0].id)}">ดูรูปบัตร</button>`
+      : p ? `ยังไม่มีรูปบัตรประชาชนของ ${esc(p.name)} — <button type="button" class="link" id="addIdCard">เพิ่มในรายชื่อ</button>` : 'บุคคลธรรมดา: บันทึกใบแล้วเพิ่มรูปบัตรประชาชนได้ที่แท็บรายชื่อ') : '';
+    const add = $('#addIdCard'); if (add) add.onclick = () => payeeForm(p);
+  }
+  $('#attList').addEventListener('click', e => attClick(e, renderAttach, D._pending));
+  $('#idNote').addEventListener('click', e => { const b = e.target.closest('[data-fview]'); if (b) viewFile(S.files.find(f => f.id === b.dataset.fview)); });
+  $('#attIn').onchange = e => {
+    const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+    if (D.id && !canEdit(D)) return toast('แนบไฟล์ได้เฉพาะใบที่คุณออกเอง');
+    prepFile(file, 'invoice').then(addCertFile).catch(err => toast(err.message));
+  };
 
   /* ================= สแกนรูป (OCR) ================= */
   async function copyText(t) {
@@ -642,7 +755,8 @@
       <details${found.length ? '' : ' open'}><summary>ข้อความทั้งหมด (${r.lines.length} บรรทัด) — แตะบรรทัดเพื่อคัดลอก</summary>
         <div class="row" style="margin:6px 0"><button type="button" id="scCopyAll">คัดลอกทั้งหมด</button></div>
         <div class="lines" id="scLines">${r.lines.map(l => `<button type="button" data-copy="${esc(l)}">${esc(l)}</button>`).join('')}</div></details>
-      <div class="row"><button type="button" class="ghost" data-close>ปิด</button>${found.length ? `<button type="button" class="pri" id="scUse">${mode === 'payee' ? 'สร้างรายชื่อจากข้อมูลนี้' : 'ใส่ลงใบ'}</button>` : ''}</div>`);
+      <label class="chk"><input type="checkbox" id="scAttach" checked> ${mode === 'payee' ? 'แนบรูปนี้ไว้กับรายชื่อ (เช่น รูปบัตรประชาชน)' : 'แนบรูปนี้เป็น invoice ของใบนี้'}</label>
+      <div class="row"><button type="button" class="ghost" data-close>ปิด</button><button type="button" class="pri" id="scUse">${mode === 'payee' ? 'สร้างรายชื่อจากข้อมูลนี้' : found.length ? 'ใส่ลงใบ' : 'แนบรูปลงใบ'}</button></div>`);
     if (F.amount.items[F.amount.sel] && F.amount.items[F.amount.sel].kind === 'total' && r.hasVat && !r.amounts.some(x => x.kind === 'base')) vatOff = true;
     draw();
     $('#dlg').onclick = e => {
@@ -659,11 +773,15 @@
       const name = pick('name'), taxId = pick('taxId'), branch = pick('branch'), address = pick('address');
       const type = /^(นาย|นาง|นางสาว|น\.ส\.)/.test(name) ? 'p' : 'j';
       const existing = taxId && S.payees.find(p => p.taxId === taxId);
+      const attach = $('#scAttach').checked;
       $('#dlg').onclick = null; closeDlg();
+      const scanned = kind => ({ kind, name: (kind === 'idcard' ? 'บัตรประชาชน' : kind === 'invoice' ? 'invoice' : 'เอกสาร') + ' (สแกน).jpg', mime: 'image/jpeg', dataUrl: img.dataUrl, size: Math.round(img.dataUrl.length * 0.75) });
       if (mode === 'payee') {
-        if (existing) { toast('มีรายชื่อนี้อยู่แล้ว'); return payeeForm(existing); }
-        return payeeForm({ type, name, taxId, branch: branch === 'สำนักงานใหญ่' ? '' : branch, address, tags: [], defItem: {} });
+        const ptype = existing ? existing.type : type, item = attach ? [scanned(ptype === 'p' ? 'idcard' : 'other')] : [];
+        if (existing) { toast('มีรายชื่อนี้อยู่แล้ว'); return payeeForm(Object.assign(clone(existing), { _pending: item })); }
+        return payeeForm({ type, name, taxId, branch: branch === 'สำนักงานใหญ่' ? '' : branch, address, tags: [], defItem: {}, _pending: item });
       }
+      if (attach) addCertFile(scanned('invoice'));
       if (existing) applyPayee(existing);
       else Object.assign(D, { payeeId: null, payeeType: type, form: type === 'p' ? 3 : 6, payeeName: name || D.payeeName, payeeTaxId: taxId || D.payeeTaxId,
         payeeBranch: branch === 'สำนักงานใหญ่' ? '' : (branch || D.payeeBranch), payeeAddress: address || D.payeeAddress });

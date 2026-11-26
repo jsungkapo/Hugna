@@ -11,6 +11,9 @@
 - รายชื่อผู้ถูกหักภาษี (แท็บ ★ รายชื่อ): ดาว = รายการโปรด (แยกของแต่ละคน), ติด tag/กลุ่ม เช่น ช่างภาพ ซื้อสินค้า,
   รายการประจำ (ประเภทเงินได้ + รายละเอียด + อัตรา) เติมให้อัตโนมัติตอนออกใบ; ในหน้าออกใบมีแถบรายชื่อโปรดให้แตะเลือก
 - ส่งออก PDF (ฉบับที่ 1, 2 หรือทั้งคู่) / PNG — มือถือใช้เมนูแชร์
+- ไฟล์แนบ: รูปบัตรประชาชน (รายชื่อบุคคลธรรมดา) / เอกสารประกอบ (นิติบุคคล) และ invoice (รูปหรือ PDF) ต่อใบ
+  เก็บใน Drive โฟลเดอร์ย่อย "บัตรประชาชน", "Invoice", "เอกสารอื่น" ใต้ "HugNa Files" (ไม่แชร์สาธารณะ ดูผ่านแอปที่ล็อกอินเท่านั้น)
+  ไฟล์ที่แนบก่อนบันทึกจะรอ (pending) แล้วอัปโหลดหลังบันทึกใบ/รายชื่อ; ตอนสแกนติ๊ก "แนบรูปนี้" ได้; เนื้อไฟล์ไม่เก็บใน localStorage (ข้อมูลส่วนบุคคล)
 - สแกนรูป (ถ่าย/เลือกรูป) → อ่านข้อความ → แยก ชื่อ, เลขผู้เสียภาษี (ตรวจ checksum), สาขา, ที่อยู่, ยอดเงิน (ก่อน VAT/ยอดรวม/VAT/หัก ณ ที่จ่าย), วันที่
   เลือกแล้วกด "ใส่ลงใบ" หรือ "สร้างรายชื่อ"; แตะคัดลอกทีละช่อง/ทีละบรรทัด/ทั้งหมด; ตัดข้อมูลของบริษัทเราเองออก (ติดป้าย "บริษัทของเรา")
 - ล็อกอินพนักงาน สิทธิ์ `admin` / `user`
@@ -59,6 +62,7 @@ Apps Script Web App  …/exec
 - **Tags**: id, name, color (สีจากชุด TAG_COLORS), createdAt
 - **Certs**: id, companyId, payeeId, book, no, issueDate, form(0–6), seq, payeeType(j/p), payeeName, payeeTaxId, payeeBranch, payeeAddress, payer(0–3), payerOther, items(JSON), funds(JSON), totalAmount, totalTax, useSig, useStamp, coSnap(JSON สำเนาข้อมูลบริษัทตอนออกครั้งแรก), status(active/deleted), createdBy, createdByName, createdAt, updatedAt
   - items: `[{id, cat:'c1'|'c2'|'c3'|'c4a'|'c4b'|'c5'|'c6', desc, date, amount, rate, custom?}]`
+- **Files**: id(=Drive fileId), ownerType(cert/payee), ownerId, kind(idcard/invoice/other), name, mime(jpeg/png/webp/pdf), size, createdBy, createdByName, createdAt, active
 - **Settings**: key/value (สำรองไว้ใช้)
 - **Log**: time, userId, username, action, detail
 - ค่าที่เป็นตัวเลขยาว/วันที่ ถูกเติม `'` นำหน้าก่อนเขียน กันชีตแปลงรูปแบบ; ค่าขึ้นต้น = + - @ ก็เติม `'` กันสูตร
@@ -67,6 +71,7 @@ Apps Script Web App  …/exec
 ## API (action)
 - สาธารณะ: `ping`, `status` (needsSetup), `setup` (สร้าง admin แรก), `login`
 - ล็อกอินแล้ว: `me`, `logout`, `bootstrap` (user+companies+certs+payees+tags), `savePayee`, `deletePayee` (ของตัวเอง/admin), `setFavorite`, `saveTag` (สร้างได้ทุกคน, แก้ได้เฉพาะ admin), `image` (fileId → dataURL), `saveCert`, `deleteCert`, `changePassword`
+- `uploadFile` {ownerType, ownerId, kind, name, dataUrl ≤ 8MB} (user แนบกับใบได้เฉพาะใบตัวเอง), `file` {fileId} → dataURL, `deleteFile` (ของตัวเอง/admin)
 - `ocr` (image dataURL → text): อัปโหลดรูปเป็น Google Doc ด้วย Drive REST (`ocrLanguage=th`) ผ่าน `ScriptApp.getOAuthToken()` แล้ว export text และลบไฟล์ทิ้ง
   ต้องเปิด Advanced Service "Drive API" ในโปรเจกต์ Apps Script (SETUP.md ขั้นเสริม) ไม่งั้นได้ code `ocr_unavailable` → หน้าเว็บจำไว้ 6 ชม. แล้วอ่านในเครื่องแทน
 - admin: `deleteTag`, `saveCompany` (sig/stamp: undefined=ไม่เปลี่ยน, null=ลบ, dataURL=ใหม่), `deleteCompany`, `users`, `saveUser`, `log`, `system`, `setCodeRef`
@@ -88,12 +93,14 @@ Apps Script Web App  …/exec
 - **หน้าเว็บ**: `git checkout vX.Y.Z -- index.html css js sw.js manifest.json` แล้ว bump เป็นเวอร์ชันใหม่และ push (ไม่ใช้ force push)
 
 ## ข้อควรระวัง
+- รูปบัตรประชาชนเป็นข้อมูลส่วนบุคคล (PDPA): ไม่แชร์ไฟล์ใน Drive สาธารณะ, ไม่แคชเนื้อไฟล์ในเครื่อง, ลบไฟล์ = ย้ายลงถังขยะ Drive
 - Apps Script web app รับ POST แบบ `text/plain` เท่านั้น (กัน CORS preflight) — อย่าเปลี่ยน Content-Type
 - ห้ามใส่ความลับใน repo (repo เป็น public) — ข้อมูลจริงอยู่ในชีต/ไดรฟ์
 - รูปลายเซ็น/ตรายางย่อเหลือ ≤ ~150KB ฝั่งหน้าเว็บก่อนส่ง และแคชใน localStorage ตาม fileId
 - `bootstrap` ส่งเอกสารทั้งหมด — ถ้าเกินหลายพันใบ ควรทำแบ่งหน้า/กรองตามปีฝั่ง backend
 
 ## สถานะล่าสุด
+- v1.3.0 (2026-11-26): แนบรูปบัตรประชาชนกับรายชื่อ และแนบ invoice (รูป/PDF) กับใบ — ทดสอบกับ mock แล้ว
 - v1.2.0 (2026-11-25): สแกนรูปเป็นข้อความ + แยกข้อมูล + คัดลอก — ทดสอบ parser และ UI กับ OCR จำลองแล้ว; ยังไม่ได้ทดสอบ Google OCR จริงและ Tesseract บน iPhone จริง
   - ผู้ใช้ยังไม่ได้ยืนยันว่าเปิด Drive API แล้วหรือยัง
 - v1.1.0 (2026-11-25): เพิ่มรายชื่อผู้ถูกหักภาษี + ดาว + tag/กลุ่ม, หน้าตั้งค่าส่วนระบบเหลือแค่เลขเวอร์ชัน+ปุ่มอัปเดต (ย้อน backend/Log ย้ายไป "ขั้นสูง")

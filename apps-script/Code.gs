@@ -9,7 +9,7 @@
  * --------------------------------------------------------------
  */
 var HUGNA_BACKEND = true;
-var VERSION = '1.2.0';
+var VERSION = '1.3.0';
 
 var SESSION_DAYS = 30;
 var HASH_ROUNDS = 300;
@@ -23,6 +23,7 @@ var SCHEMA = {
               'status', 'createdBy', 'createdByName', 'createdAt', 'updatedAt'],
   Payees:    ['id', 'type', 'name', 'taxId', 'branch', 'address', 'tags', 'defItem', 'form', 'active', 'createdBy', 'createdAt', 'updatedAt', 'lastUsed'],
   Tags:      ['id', 'name', 'color', 'createdAt'],
+  Files:     ['id', 'ownerType', 'ownerId', 'kind', 'name', 'mime', 'size', 'createdBy', 'createdByName', 'createdAt', 'active'],
   Settings:  ['key', 'value'],
   Log:       ['time', 'userId', 'username', 'action', 'detail']
 };
@@ -117,7 +118,8 @@ var API = {
     var tags = rows_('Tags').map(function (t) { return { id: t.id, name: t.name, color: t.color }; });
     var me = rows_('Users').filter(function (u) { return u.id === user.id; })[0];
     var u = me ? cleanUser_(me) : user;
-    return { user: u, companies: companies, certs: certs, payees: payees, tags: tags, version: VERSION };
+    var files = rows_('Files').filter(function (f) { return String(f.active) !== 'false'; }).map(cleanFile_);
+    return { user: u, companies: companies, certs: certs, payees: payees, tags: tags, files: files, version: VERSION };
   },
 
   /** รูปลายเซ็น/ตรายาง (ส่งเป็น data URL) */
@@ -253,6 +255,50 @@ var API = {
     }
     log_(user, 'ocr', text.length + ' ตัวอักษร');
     return { text: text.replace(/^\uFEFF/, ''), engine: 'google' };
+  },
+
+  /* ---------- ไฟล์แนบ: รูปบัตรประชาชน (รายชื่อ) / invoice (ใบ) ---------- */
+  uploadFile: function (req, user) {
+    var ownerType = req.ownerType === 'payee' ? 'payee' : req.ownerType === 'cert' ? 'cert' : '';
+    if (!ownerType) throw err_('ไม่ระบุว่าแนบกับอะไร');
+    var kind = FILE_KINDS[req.kind] ? req.kind : 'other';
+    var m = /^data:([\w.+\-]+\/[\w.+\-]+);base64,(.+)$/.exec(String(req.dataUrl || ''));
+    if (!m || !FILE_MIMES[m[1]]) throw err_('รองรับเฉพาะรูป (JPG/PNG/WEBP) หรือ PDF');
+    var bytes = Utilities.base64Decode(m[2]);
+    if (bytes.length > 8000000) throw err_('ไฟล์ใหญ่เกิน 8 MB');
+    var owner = ownerType === 'cert'
+      ? rows_('Certs').filter(function (x) { return x.id === req.ownerId && x.status !== 'deleted'; })[0]
+      : rows_('Payees').filter(function (x) { return x.id === req.ownerId && String(x.active) !== 'false'; })[0];
+    if (!owner) throw err_('ไม่พบเอกสาร/รายชื่อที่จะแนบ');
+    if (ownerType === 'cert' && user.role !== 'admin' && owner.createdBy !== user.id) throw err_('แนบไฟล์ได้เฉพาะใบที่คุณออกเอง', 'forbidden');
+    var label = ownerType === 'cert' ? owner.book + '-' + owner.no + ' ' + owner.payeeName : owner.name;
+    var fname = Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyyMMdd-HHmm') + ' ' + FILE_KINDS[kind] + ' ' +
+      String(label).replace(/[\\\/:*?"<>|]/g, ' ').slice(0, 80) + '.' + FILE_MIMES[m[1]];
+    var file = subfolder_(FILE_KINDS[kind]).createFile(Utilities.newBlob(bytes, m[1], fname));
+    var rec = { id: file.getId(), ownerType: ownerType, ownerId: owner.id, kind: kind, name: str_(req.name || fname, 120), mime: m[1],
+                size: bytes.length, createdBy: user.id, createdByName: user.name, createdAt: now_(), active: true };
+    append_('Files', rec);
+    log_(user, 'uploadFile', FILE_KINDS[kind] + ' → ' + label);
+    return cleanFile_(rec);
+  },
+
+  file: function (req) {
+    var f = rows_('Files').filter(function (x) { return x.id === req.fileId && String(x.active) !== 'false'; })[0];
+    if (!f) throw err_('ไม่พบไฟล์', 'not_found');
+    var blob = DriveApp.getFileById(f.id).getBlob();
+    return { fileId: f.id, mime: f.mime, dataUrl: 'data:' + f.mime + ';base64,' + Utilities.base64Encode(blob.getBytes()) };
+  },
+
+  deleteFile: function (req, user) {
+    return withLock_(function () {
+      var f = rows_('Files').filter(function (x) { return x.id === req.fileId && String(x.active) !== 'false'; })[0];
+      if (!f) throw err_('ไม่พบไฟล์');
+      if (user.role !== 'admin' && f.createdBy !== user.id) throw err_('ลบได้เฉพาะไฟล์ที่คุณแนบเอง', 'forbidden');
+      update_('Files', 'id', f.id, { active: false });
+      try { DriveApp.getFileById(f.id).setTrashed(true); } catch (x) {}
+      log_(user, 'deleteFile', f.name);
+      return true;
+    });
   },
 
   /* ---------- รายชื่อผู้ถูกหักภาษี ---------- */
@@ -550,6 +596,22 @@ function saveImage_(dataUrl, name) {
   if (bytes.length > 1500000) throw err_('รูปใหญ่เกินไป');
   var blob = Utilities.newBlob(bytes, m[1], name + '.' + (m[2] === 'jpeg' ? 'jpg' : m[2]));
   return folder_().createFile(blob).getId();
+}
+
+/* ================= files ================= */
+var FILE_KINDS = { idcard: 'บัตรประชาชน', invoice: 'Invoice', other: 'เอกสารอื่น' };
+var FILE_MIMES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
+function subfolder_(name) {
+  var props = PropertiesService.getScriptProperties(), key = 'FOLDER_' + name, id = props.getProperty(key);
+  if (id) { try { return DriveApp.getFolderById(id); } catch (x) {} }
+  var parent = folder_(), it = parent.getFoldersByName(name);
+  var f = it.hasNext() ? it.next() : parent.createFolder(name);
+  props.setProperty(key, f.getId());
+  return f;
+}
+function cleanFile_(f) {
+  return { id: f.id, ownerType: f.ownerType, ownerId: f.ownerId, kind: f.kind, name: f.name, mime: f.mime, size: num_(f.size),
+           createdBy: f.createdBy, createdByName: f.createdByName, createdAt: f.createdAt };
 }
 
 /* ================= payees ================= */
