@@ -75,8 +75,10 @@
     e.preventDefault(); const btn = e.submitter || $('#loginForm .pri'); showErr($('#lgErr'), '');
     await busy(btn, 'กำลังเข้าสู่ระบบ…', async () => {
       try {
-        const r = await API.call('login', { username: $('#lgUser').value, password: $('#lgPass').value });
-        API.setToken(r.token); $('#lgPass').value = ''; await loadAll(); startApp();
+        const r = await API.call('login', { username: $('#lgUser').value, password: $('#lgPass').value, withData: true });
+        API.setToken(r.token); $('#lgPass').value = '';
+        if (r.data) { apply(r.data); saveCache(); } else await loadAll();
+        startApp();
       } catch (err) { showErr($('#lgErr'), err.message); }
     });
   });
@@ -85,8 +87,8 @@
     if ($('#suPass').value !== $('#suPass2').value) return showErr($('#suErr'), 'รหัสผ่านทั้งสองช่องไม่ตรงกัน');
     await busy(e.submitter || $('#setupForm .pri'), 'กำลังสร้าง…', async () => {
       try {
-        const r = await API.call('setup', { name: $('#suName').value, username: $('#suUser').value, password: $('#suPass').value });
-        API.setToken(r.token); await loadAll(); startApp(); location.hash = '#companies';
+        const r = await API.call('setup', { name: $('#suName').value, username: $('#suUser').value, password: $('#suPass').value, withData: true });
+        API.setToken(r.token); if (r.data) { apply(r.data); saveCache(); } else await loadAll(); startApp(); location.hash = '#companies';
       } catch (err) { showErr($('#suErr'), err.message); }
     });
   });

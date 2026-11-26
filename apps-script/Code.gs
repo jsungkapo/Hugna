@@ -9,7 +9,7 @@
  * --------------------------------------------------------------
  */
 var HUGNA_BACKEND = true;
-var VERSION = '1.3.0';
+var VERSION = '1.3.1';
 
 var SESSION_DAYS = 30;
 var HASH_ROUNDS = 300;
@@ -81,7 +81,7 @@ var API = {
       var u = makeUser_(req.username, req.name, 'admin', req.password);
       append_('Users', u);
       log_(u, 'setup', 'สร้างแอดมินคนแรก');
-      return session_(u);
+      return withData_(session_(u), req);
     });
   },
 
@@ -98,7 +98,7 @@ var API = {
     }
     cache.remove(failKey);
     update_('Users', 'id', u.id, { lastLogin: now_() });
-    return session_(u);
+    return withData_(session_(u), req);
   },
 
   logout: function (req, user) {
@@ -454,8 +454,13 @@ function auth_(token) {
   var u = rows_('Users').filter(function (r) { return r.id === s.userId; })[0];
   if (!u || String(u.active) === 'false') throw err_('บัญชีถูกปิดใช้งาน', 'auth');
   var clean = cleanUser_(u);
-  cache.put('sess_' + token, JSON.stringify(clean), 1800);
+  cache.put('sess_' + token, JSON.stringify(clean), 21600);
   return clean;
+}
+/** ส่งข้อมูลทั้งหมดกลับไปพร้อมการล็อกอิน — ประหยัดการเรียกอีกรอบ */
+function withData_(sess, req) {
+  if (req && req.withData) sess.data = API.bootstrap(req, sess.user);
+  return sess;
 }
 function session_(u) {
   var token = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
@@ -508,35 +513,43 @@ function ss_() {
   }
   return SS_;
 }
-var SHEET_CACHE_ = {};
+// แคชภายในคำขอเดียว: อ่านแต่ละแท็บครั้งเดียว (ล้างเมื่อเขียน / เมื่อเข้า lock)
+var SHEET_CACHE_ = {}, HEAD_ = {}, ROWS_ = {};
 function sheet_(name) {
   if (SHEET_CACHE_[name]) return SHEET_CACHE_[name];
   var ss = ss_(), sh = ss.getSheetByName(name), cols = SCHEMA[name];
+  var cache = CacheService.getScriptCache(), ck = 'schema_' + VERSION + '_' + name;
   if (!sh) {
     sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold');
     sh.setFrozenRows(1);
-  } else {
+    HEAD_[name] = cols.slice();
+  } else if (!cache.get(ck)) {
+    // ตรวจ/เพิ่มคอลัมน์ใหม่ ครั้งเดียวต่อเวอร์ชัน (จำไว้ 6 ชม.)
     var lastCol = Math.max(sh.getLastColumn(), 1);
     var head = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
     var missing = cols.filter(function (c) { return head.indexOf(c) < 0; });
     if (missing.length) sh.getRange(1, head.filter(String).length + 1, 1, missing.length).setValues([missing]).setFontWeight('bold');
+    delete HEAD_[name];
   }
+  cache.put(ck, '1', 21600);
   SHEET_CACHE_[name] = sh;
   return sh;
 }
-function headers_(sh) {
-  return sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+function headers_(name) {
+  if (HEAD_[name]) return HEAD_[name];
+  var sh = sheet_(name);
+  HEAD_[name] = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0].map(String);
+  return HEAD_[name];
 }
 function rows_(name) {
-  var sh = sheet_(name), last = sh.getLastRow();
-  if (last < 2) return [];
-  var head = headers_(sh);
-  var vals = sh.getRange(2, 1, last - 1, head.length).getValues();
+  if (ROWS_[name]) return ROWS_[name];
+  var vals = sheet_(name).getDataRange().getValues();
+  var head = HEAD_[name] = vals[0].map(String);
   var out = [];
-  for (var i = 0; i < vals.length; i++) {
+  for (var i = 1; i < vals.length; i++) {
     if (vals[i].join('') === '') continue;
-    var o = { _row: i + 2 };
+    var o = { _row: i + 1 };
     for (var j = 0; j < head.length; j++) {
       if (!head[j]) continue;
       var v = vals[i][j];
@@ -546,6 +559,7 @@ function rows_(name) {
     }
     out.push(o);
   }
+  ROWS_[name] = out;
   return out;
 }
 function toRow_(head, obj, base) {
@@ -553,27 +567,30 @@ function toRow_(head, obj, base) {
     var v = obj.hasOwnProperty(h) ? obj[h] : (base ? base[j] : '');
     if (JSON_FIELDS[h] && typeof v !== 'string') v = JSON.stringify(v || (JSON_ARRAYS[h] ? [] : {}));
     if (v === undefined || v === null) v = '';
-    // กันสูตรชีต (formula injection) และให้เลขที่/เลขภาษีเป็นข้อความ
+    // กันสูตรชีต (formula injection) และให้เลขที่/เลขภาษี/วันที่เป็นข้อความ
     if (typeof v === 'string' && /^[=+\-@]/.test(v)) v = "'" + v;
     if (typeof v === 'string' && (/^\d{4,}$/.test(v) || /^\d{4}-\d{2}-\d{2}/.test(v))) v = "'" + v;
     return v;
   });
 }
 function append_(name, obj) {
-  var sh = sheet_(name), head = headers_(sh);
-  sh.appendRow(toRow_(head, obj));
+  var head = headers_(name);
+  sheet_(name).appendRow(toRow_(head, obj));
+  delete ROWS_[name];
 }
 function update_(name, key, id, patch) {
   var r = rows_(name).filter(function (x) { return x[key] === id; })[0];
   if (!r) throw err_('ไม่พบข้อมูล');
-  var sh = sheet_(name), head = headers_(sh);
-  var base = sh.getRange(r._row, 1, 1, head.length).getValues()[0];
-  sh.getRange(r._row, 1, 1, head.length).setValues([toRow_(head, patch, base)]);
+  var head = headers_(name);
+  var base = head.map(function (h) { return r[h]; });
+  sheet_(name).getRange(r._row, 1, 1, head.length).setValues([toRow_(head, patch, base)]);
+  delete ROWS_[name];
 }
-function deleteRow_(name, row) { sheet_(name).deleteRow(row); }
+function deleteRow_(name, row) { sheet_(name).deleteRow(row); delete ROWS_[name]; }
 function withLock_(fn) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) throw err_('ระบบไม่ว่าง ลองใหม่อีกครั้ง', 'busy');
+  ROWS_ = {}; // อ่านข้อมูลล่าสุดหลังได้ lock
   try { return fn(); } finally { lock.releaseLock(); }
 }
 function log_(user, action, detail) {
