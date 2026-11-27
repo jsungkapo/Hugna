@@ -9,7 +9,7 @@
  * --------------------------------------------------------------
  */
 var HUGNA_BACKEND = true;
-var VERSION = '1.6.0';
+var VERSION = '1.6.1';
 
 var SESSION_DAYS = 30;
 var HASH_ROUNDS = 300;
@@ -710,11 +710,15 @@ function saveImage_(dataUrl, name) {
 var DOC_TYPES = { expense: 'ใบเบิกเงิน', bill: 'ใบวางบิล/แจ้งหนี้/ใบเสร็จ', poa: 'หนังสือมอบอำนาจ' };
 var BILL_SUB = { bn: 'BN', iv: 'IV', re: 'RE', qt: 'QT' };
 function docPrefix_(type, subtype) { return type === 'expense' ? 'EX' : type === 'poa' ? 'POA' : BILL_SUB[subtype]; }
-/** เลขที่: PREFIX + ปี พ.ศ. + '-' + ลำดับ 4 หลัก เช่น IV2569-0001 (รันแยกตามบริษัท) */
+/** เลขที่: PREFIX + YYYYMMDD (ค.ศ. ตามวันที่เอกสาร) + ลำดับ 3 หลักของวันนั้น เช่น EX20261127001 (รันแยกตามบริษัท) */
 function nextDocNo_(all, prefix, companyId, date) {
-  var be = (parseInt(String(date).slice(0, 4), 10) || new Date().getFullYear()) + 543, head = prefix + be + '-', max = 0;
-  all.forEach(function (x) { if (x.companyId === companyId && String(x.no).indexOf(head) === 0) max = Math.max(max, parseInt(String(x.no).slice(head.length), 10) || 0); });
-  return head + ('000' + (max + 1)).slice(-4);
+  var ymd = /^\d{4}-\d{2}-\d{2}/.test(String(date)) ? String(date).slice(0, 10).replace(/-/g, '') : Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyyMMdd');
+  var head = prefix + ymd, max = 0;
+  all.forEach(function (x) {
+    var no = String(x.no);
+    if (x.companyId === companyId && no.indexOf(head) === 0 && /^\d+$/.test(no.slice(head.length))) max = Math.max(max, parseInt(no.slice(head.length), 10));
+  });
+  return head + ('00' + (max + 1)).slice(-Math.max(3, String(max + 1).length));
 }
 function docTitle_(type, data) {
   if (type === 'expense') return data.requester || '';

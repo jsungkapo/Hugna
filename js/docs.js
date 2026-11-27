@@ -61,11 +61,12 @@ window.DocsModule = function (X) {
   const inp = (lbl, path, a) => `<label>${lbl}<input data-p="${path}" value="${esc(getP(D2, path) ?? '')}" ${a || ''}></label>`;
   const area = (lbl, path, a) => `<label>${lbl}<textarea data-p="${path}" rows="2" ${a || ''}>${esc(getP(D2, path) ?? '')}</textarea></label>`;
   const chk = (lbl, path) => `<label class="chk"><input type="checkbox" data-p="${path}"${getP(D2, path) !== false ? ' checked' : ''}> ${lbl}</label>`;
+  /** เลขที่: หมวด + YYYYMMDD (ค.ศ.) + ลำดับ 3 หลักของวันนั้น เช่น EX20261127001 */
   function nextNoHint() {
     const prefix = D2.type === 'expense' ? 'EX' : D2.type === 'poa' ? 'POA' : D2.subtype.toUpperCase();
-    const head = prefix + (parseInt(D2.docDate, 10) + 543) + '-';
-    let m = 0; S.docs.forEach(x => { if (x.companyId === D2.companyId && String(x.no).startsWith(head)) m = Math.max(m, parseInt(String(x.no).slice(head.length), 10) || 0); });
-    return head + String(m + 1).padStart(4, '0');
+    const head = prefix + String(D2.docDate || todayISO()).slice(0, 10).replace(/-/g, '');
+    let m = 0; S.docs.forEach(x => { const n = String(x.no); if (x.companyId === D2.companyId && n.startsWith(head) && /^\d+$/.test(n.slice(head.length))) m = Math.max(m, parseInt(n.slice(head.length), 10)); });
+    return head + String(m + 1).padStart(3, '0');
   }
   function headFields() {
     return `<div class="g2"><label>เลขที่<input data-p="no" value="${esc(D2.no)}" placeholder="อัตโนมัติ (${esc(nextNoHint())})"></label><label>วันที่<input type="date" data-p="docDate" value="${esc(D2.docDate)}"></label></div>`;
