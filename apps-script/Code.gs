@@ -9,7 +9,7 @@
  * --------------------------------------------------------------
  */
 var HUGNA_BACKEND = true;
-var VERSION = '1.6.5';
+var VERSION = '1.6.6';
 
 var SESSION_DAYS = 30;
 var HASH_ROUNDS = 300;

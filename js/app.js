@@ -125,7 +125,7 @@
   }
   $('#coSel').onchange = e => {
     S.coId = e.target.value; LS.set('lastCo', S.coId);
-    const cur = DM.current(); if (cur && cur.type === 'expense' && !cur.id) DM.setCompany(S.coId);
+    const cur = DM.current(); if (cur && !cur.id) DM.setCompany(S.coId);
     if (!D.id) { D.companyId = S.coId; D.no = ''; }
     renderList(); fillForm(); renderCompanies();
   };

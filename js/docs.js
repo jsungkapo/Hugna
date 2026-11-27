@@ -192,15 +192,20 @@ window.DocsModule = function (X) {
   }
   /** เปลี่ยนบริษัทของเอกสาร (เลขที่จะรันใหม่ตามบริษัท ถ้ายังไม่บันทึก) */
   function setCompany(id, fromForm) {
-    if (!D2 || !co(id) || D2.companyId === id) return;
-    D2.companyId = id; if (!D2.id) D2.no = '';
+    if (!D2 || !co(id)) return;
+    const d = D2.data, oldName = (co(D2.companyId) || {}).name;
+    // ใบแจ้งหนี้/ใบเสร็จ: ถ้าผู้ออกเป็นบริษัท ให้เปลี่ยนตาม · มอบอำนาจ: ถ้าผู้มอบเป็นบริษัท ให้เปลี่ยนตาม
+    if (D2.type === 'bill' && (!d.issuerRef || d.issuerRef.startsWith('c:'))) { d.issuerRef = 'c:' + id; d.issuerSnap = snapOf(d.issuerRef); }
+    if (D2.type === 'poa' && (!d.grantorRef || d.grantorRef.startsWith('c:'))) { d.grantorRef = 'c:' + id; d.grantorSnap = snapOf(d.grantorRef); if (!d.place || d.place === oldName) d.place = co(id).name; }
+    if (D2.companyId !== id) { D2.companyId = id; if (!D2.id) D2.no = ''; }
     render();
     if (fromForm) X.syncCompany(id);
   }
   function pickRef(which, val) {
     const d = D2.data, snap = val && val !== 'custom' ? snapOf(val) : null;
+    if ((which === 'issuer' || which === 'grantor') && val && val.startsWith('c:')) return setCompany(val.slice(2), true); // เลือกบริษัท = เปลี่ยนบริษัทของเอกสาร + เมนูด้านบน
     if (which === 'issuer') { d.issuerRef = val; d.issuerSnap = snap; }
-    if (which === 'grantor') { d.grantorRef = val; d.grantorSnap = snap; if (snap && snap.kind === 'company' && !d.place) d.place = ''; }
+    if (which === 'grantor') { d.grantorRef = val; d.grantorSnap = snap; }
     if (which === 'cust') { d.custRef = val; if (snap) d.customer = { name: snap.name, taxId: snap.taxId || '', branch: snap.branch || '', address: snap.address || '' }; }
     if (which === 'grantee') { d.granteeRef = val; if (snap) d.grantee = { name: snap.name, idNo: snap.taxId || '', address: snap.address || '' }; }
     render();
