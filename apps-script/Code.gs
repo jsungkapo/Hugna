@@ -9,7 +9,7 @@
  * --------------------------------------------------------------
  */
 var HUGNA_BACKEND = true;
-var VERSION = '1.6.6';
+var VERSION = '1.7.0';
 
 var SESSION_DAYS = 30;
 var HASH_ROUNDS = 300;
@@ -17,7 +17,7 @@ var HASH_ROUNDS = 300;
 var SCHEMA = {
   Users:     ['id', 'username', 'name', 'role', 'passHash', 'salt', 'active', 'createdAt', 'lastLogin', 'favs'],
   Sessions:  ['token', 'userId', 'expires', 'createdAt'],
-  Companies: ['id', 'name', 'taxId', 'branch', 'address', 'signer', 'signerTitle', 'sigFileId', 'stampFileId', 'active', 'createdAt', 'updatedAt'],
+  Companies: ['id', 'name', 'taxId', 'branch', 'address', 'signer', 'signerTitle', 'sigFileId', 'stampFileId', 'active', 'createdAt', 'updatedAt', 'phone', 'bankName', 'bankAccount', 'bankAccountName'],
   Certs:     ['id', 'companyId', 'payeeId', 'book', 'no', 'issueDate', 'form', 'seq', 'payeeType', 'payeeName', 'payeeTaxId', 'payeeBranch',
               'payeeAddress', 'payer', 'payerOther', 'items', 'funds', 'totalAmount', 'totalTax', 'useSig', 'useStamp', 'coSnap',
               'status', 'createdBy', 'createdByName', 'createdAt', 'updatedAt'],
@@ -199,6 +199,7 @@ var API = {
         id: existing ? existing.id : Utilities.getUuid(),
         name: str_(c.name, 200), taxId: digits_(c.taxId), branch: str_(c.branch, 60), address: str_(c.address, 400),
         signer: str_(c.signer, 120), signerTitle: str_(c.signerTitle, 120),
+        phone: str_(c.phone, 60), bankName: str_(c.bankName, 80), bankAccount: str_(c.bankAccount, 40), bankAccountName: str_(c.bankAccountName, 160),
         sigFileId: existing ? existing.sigFileId : '', stampFileId: existing ? existing.stampFileId : '',
         active: true, createdAt: existing ? existing.createdAt : now_(), updatedAt: now_()
       };
@@ -802,7 +803,8 @@ function snapCompany_(c) {
 }
 function cleanCompany_(c) {
   return { id: c.id, name: c.name, taxId: String(c.taxId || ''), branch: c.branch, address: c.address, signer: c.signer,
-           signerTitle: c.signerTitle, sigFileId: c.sigFileId || '', stampFileId: c.stampFileId || '', updatedAt: c.updatedAt };
+           signerTitle: c.signerTitle, sigFileId: c.sigFileId || '', stampFileId: c.stampFileId || '', updatedAt: c.updatedAt,
+           phone: String(c.phone || ''), bankName: c.bankName || '', bankAccount: String(c.bankAccount || ''), bankAccountName: c.bankAccountName || '' };
 }
 function cleanCert_(c) {
   var o = {};

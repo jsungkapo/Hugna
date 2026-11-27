@@ -202,7 +202,8 @@ legend{font-weight:600;font-size:17px;padding:0;margin-bottom:8px}
 .dsheet .dtot .words{border:1px solid #222;border-top:0;padding:8px;display:flex;align-items:center;justify-content:center;background:#f6f6f6;font-weight:600;color:#0b2a8a;text-align:center}
 .dsheet .dtot table{width:100%;border-collapse:collapse}.dsheet .dtot td{border:1px solid #222;border-top:0;padding:5px 8px}.dsheet .dtot td.n{text-align:right;font-weight:600;white-space:nowrap}
 .dsheet .dtot tr.grand td{font-weight:700;background:#f0f0f0}
-.dsheet .dnote{margin-top:10px;font-size:12.5px;white-space:pre-wrap}.dsheet .ck{margin-right:10px}
+.dsheet .dnote{margin-top:10px;font-size:12.5px;white-space:pre-wrap}
+.dsheet .dbank{margin-top:10px;font-size:13px;border:1px solid #222;padding:7px 10px;background:#fafafa}.dsheet .ck{margin-right:10px}
 .dsheet .dsigs{display:grid;grid-template-columns:repeat(var(--n,2),1fr);gap:22px 16px;margin-top:36px}
 .dsheet .dsig{text-align:center;font-size:12.5px;line-height:1.6}
 .dsheet .dsig .area{height:78px;position:relative;border-bottom:1px dotted #333;margin:0 12px 4px}

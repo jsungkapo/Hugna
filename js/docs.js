@@ -32,7 +32,7 @@ window.DocsModule = function (X) {
   function snapOf(ref) {
     if (!ref) return null;
     const [k, id] = ref.split(':');
-    if (k === 'c') { const c = co(id); return c && { kind: 'company', id, name: c.name, taxId: c.taxId, branch: c.branch || 'สำนักงานใหญ่', address: c.address, signer: c.signer, signerTitle: c.signerTitle }; }
+    if (k === 'c') { const c = co(id); return c && { kind: 'company', id, name: c.name, taxId: c.taxId, branch: c.branch || 'สำนักงานใหญ่', address: c.address, signer: c.signer, signerTitle: c.signerTitle, phone: c.phone || '', bankName: c.bankName || '', bankAccount: c.bankAccount || '', bankAccountName: c.bankAccountName || '' }; }
     const p = S.payees.find(x => x.id === id);
     return p && { kind: p.type === 'p' ? 'person' : 'payee', id, name: p.name, taxId: p.taxId, branch: p.type === 'p' ? '' : (p.branch || 'สำนักงานใหญ่'), address: p.address };
   }
@@ -74,6 +74,10 @@ window.DocsModule = function (X) {
   function render() {
     if (!D2) return;
     const ro = !canEdit(D2), d = D2.data, c = co(D2.companyId);
+    if (!D2.id) { // ยังไม่บันทึก: ดึงข้อมูลบริษัทล่าสุด (เบอร์โทร บัญชี ฯลฯ)
+      if (d.issuerRef && d.issuerRef.startsWith('c:')) d.issuerSnap = snapOf(d.issuerRef) || d.issuerSnap;
+      if (d.grantorRef && d.grantorRef.startsWith('c:')) d.grantorSnap = snapOf(d.grantorRef) || d.grantorSnap;
+    }
     let h = `<div class="dochead"><img class="dicon" src="${TYPES[D2.type].icon}" alt=""><span class="dtype">${esc(label(D2))}</span>${statusBadge(D2)}${D2.id ? `<span class="hint">${esc(D2.no)}</span>` : ''}</div>`;
     if (ro) h += `<div class="note">${D2.type === 'expense' && D2.createdBy === S.user.id ? 'ใบเบิกนี้อนุมัติแล้ว แก้ไขไม่ได้' : 'ดูอย่างเดียว — เอกสารนี้ออกโดยผู้อื่น'}</div>`;
     if (D2.type === 'expense') {
@@ -96,8 +100,9 @@ window.DocsModule = function (X) {
         ${inp(D2.subtype === 'bn' ? 'อ้างอิงใบแจ้งหนี้ / ใบกำกับ' : 'อ้างอิง (เช่น เลขที่ PO)', 'data.refNo')}</div></fieldset>
         <fieldset><legend>${SUB[D2.subtype].issuer} (ผู้ออกเอกสาร)</legend>
         <select data-ref="issuer">${refOptions(d.issuerRef, {})}</select>
-        ${d.issuerSnap ? `<p class="hint">${esc(d.issuerSnap.name)}${d.issuerSnap.taxId ? ' · เลขผู้เสียภาษี ' + esc(d.issuerSnap.taxId) : ''}${d.issuerSnap.address ? '<br>' + esc(d.issuerSnap.address) : ''}</p>` : '<p class="hint">เลือกบริษัทของเรา หรือบุคคลธรรมดาจากรายชื่อ (เพิ่มคนใหม่ได้ที่แท็บรายชื่อ)</p>'}
-        ${d.issuerSnap && d.issuerSnap.kind === 'company' ? `<div class="row">${chk('ใส่ลายเซ็น', 'data.useSig')}${chk('ใส่ตรายาง', 'data.useStamp')}</div>` : ''}</fieldset>
+        ${d.issuerSnap ? `<p class="hint">${esc(d.issuerSnap.name)}${d.issuerSnap.taxId ? ' · เลขผู้เสียภาษี ' + esc(d.issuerSnap.taxId) : ''}${d.issuerSnap.phone ? ' · โทร ' + esc(d.issuerSnap.phone) : ''}${d.issuerSnap.address ? '<br>' + esc(d.issuerSnap.address) : ''}</p>` : '<p class="hint">เลือกบริษัทของเรา หรือบุคคลธรรมดาจากรายชื่อ (เพิ่มคนใหม่ได้ที่แท็บรายชื่อ)</p>'}
+        ${d.issuerSnap && d.issuerSnap.kind === 'company' ? `<div class="row">${chk('ลงลายเซ็น', 'data.useSig')}${chk('ประทับตรายาง', 'data.useStamp')}</div>
+          ${D2.subtype !== 're' ? (d.issuerSnap.bankAccount ? chk('แสดงบัญชีธนาคาร ' + esc(d.issuerSnap.bankName || '') + ' ' + esc(d.issuerSnap.bankAccount), 'data.showBank') : '<p class="hint">ยังไม่มีบัญชีธนาคารของบริษัทนี้ — เพิ่มได้ที่แท็บ “บริษัท”</p>') : ''}` : ''}</fieldset>
         <fieldset><legend>ลูกค้า</legend><select data-ref="cust">${refOptions(d.custRef, { custom: true })}</select>
         ${inp('ชื่อ', 'data.customer.name')}<div class="g2">${inp('เลขผู้เสียภาษี', 'data.customer.taxId', 'inputmode="numeric" maxlength="13"')}${inp('สาขา', 'data.customer.branch')}</div>${area('ที่อยู่', 'data.customer.address')}</fieldset>
         <fieldset><legend>รายการ</legend><div id="dItems" class="stackgap"></div><button type="button" class="ghost" data-add>+ เพิ่มรายการ</button>
@@ -300,7 +305,7 @@ window.DocsModule = function (X) {
   const words = n => esc(C.bahtText(n));
   function issuerBlock(s) {
     if (!s) return '<div class="iss"><b>— ยังไม่ได้เลือกผู้ออกเอกสาร —</b></div>';
-    return `<div class="iss"><b>${esc(s.name)}</b>${s.address ? `<div>${esc(s.address)}</div>` : ''}${s.taxId ? `<div>เลขประจำตัวผู้เสียภาษี ${esc(s.taxId)}${s.branch ? ' · ' + esc(s.branch) : ''}</div>` : ''}</div>`;
+    return `<div class="iss"><b>${esc(s.name)}</b>${s.address ? `<div>${esc(s.address)}</div>` : ''}${s.taxId ? `<div>เลขประจำตัวผู้เสียภาษี ${esc(s.taxId)}${s.branch ? ' · ' + esc(s.branch) : ''}</div>` : ''}${s.phone ? `<div>โทร ${esc(s.phone)}</div>` : ''}</div>`;
   }
   function sigBox(title, name, im, opt) {
     opt = opt || {};
@@ -314,7 +319,7 @@ window.DocsModule = function (X) {
       const items = (x.items || []).filter(it => num(it.amount) || it.desc), total = r2(items.reduce((s, it) => s + num(it.amount), 0));
       const pad = Math.max(0, 10 - items.length), ok = ['approved', 'paid'].includes(d.status);
       return `<div class="sheet dsheet">${d.status !== 'pending' && STATUS[d.status] ? `<div class="dstatus ${STATUS[d.status][1]}">${STATUS[d.status][0]}</div>` : ''}
-        <div class="dh">${issuerBlock({ name: c.name, address: c.address, taxId: c.taxId, branch: c.branch })}<div class="dt"><h1>ใบเบิกเงิน</h1><div class="en">EXPENSE CLAIM</div>
+        <div class="dh">${issuerBlock({ name: c.name, address: c.address, taxId: c.taxId, branch: c.branch, phone: c.phone })}<div class="dt"><h1>ใบเบิกเงิน</h1><div class="en">EXPENSE CLAIM</div>
         <div class="dmeta"><span>เลขที่</span><b>${esc(no)}</b><span>วันที่</span><b>${esc(dLong(d.docDate))}</b></div></div></div>
         <div class="dinfo"><div><span>ผู้เบิก</span><b>${esc(x.requester)}</b></div><div><span>แผนก/ตำแหน่ง</span><b>${esc(x.dept || '-')}</b></div>
         <div><span>รับเงินโดย</span><b>${x.payMethod === 'cash' ? 'เงินสด' : 'โอนเข้าบัญชี ' + esc([x.bank, x.accountNo, x.accountName].filter(Boolean).join(' · '))}</b></div></div>
@@ -341,6 +346,7 @@ window.DocsModule = function (X) {
           <tr><td>รวมเป็นเงิน</td><td class="n">${money(b.sub)}</td></tr>${x.vat ? `<tr><td>ภาษีมูลค่าเพิ่ม 7%</td><td class="n">${money(b.vat)}</td></tr>` : ''}
           <tr class="grand"><td>จำนวนเงินรวมทั้งสิ้น</td><td class="n">${money(b.total)}</td></tr>
           ${b.wht ? `<tr><td>หัก ณ ที่จ่าย ${esc(x.whtRate)}%</td><td class="n">${money(b.wht)}</td></tr><tr class="grand"><td>ยอดชำระสุทธิ</td><td class="n">${money(b.net)}</td></tr>` : ''}</table></div>
+        ${isCo && iss.bankAccount && x.showBank !== false && d.subtype !== 're' ? `<div class="dbank"><b>ชำระเงินโดยโอนเข้าบัญชี</b> ธนาคาร${esc(iss.bankName || '')} เลขที่บัญชี <b>${esc(iss.bankAccount)}</b>${iss.bankAccountName ? ' ชื่อบัญชี ' + esc(iss.bankAccountName) : ''}</div>` : ''}
         ${d.subtype === 're' ? `<div class="dnote">ชำระโดย ${[['cash', 'เงินสด'], ['transfer', 'โอนเงิน'], ['cheque', 'เช็ค']].map(([v, t]) => `<span class="ck">${x.payMethod === v ? '☑' : '☐'} ${t}</span>`).join(' ')} &nbsp; ได้รับเงินถูกต้องเรียบร้อยแล้ว</div>` : ''}
         ${x.note ? `<div class="dnote"><b>หมายเหตุ</b> ${esc(x.note)}</div>` : ''}
         <div class="dsigs" style="--n:2">${sigBox(s.cust, '', null)}${sigBox(s.issuer, isCo ? iss.signer : (iss ? iss.name : ''), im, { sig: isCo && x.useSig !== false, stamp: isCo && x.useStamp !== false, date: dShort(d.docDate) })}</div></div>`;

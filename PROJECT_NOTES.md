@@ -81,7 +81,8 @@ Apps Script Web App  …/exec
 ## ข้อมูลใน Google Sheet
 - **Users**: id, username, name, role(admin/user), passHash, salt, active, createdAt, lastLogin, favs(JSON: payeeId ที่ติดดาว) — รหัสผ่าน SHA-256 + salt วน 300 รอบ
 - **Sessions**: token, userId, expires (30 วัน), createdAt — แคชใน CacheService 30 นาที
-- **Companies**: id, name, taxId, branch, address, signer, signerTitle, sigFileId, stampFileId, active, createdAt, updatedAt (ลบ = active false)
+- **Companies**: id, name, taxId, branch, address, signer, signerTitle, sigFileId, stampFileId, active, createdAt, updatedAt, phone, bankName, bankAccount, bankAccountName (ลบ = active false)
+  - เบอร์โทรแสดงที่หัวใบเบิก/บิล; บัญชีธนาคารแสดงเป็นกล่อง "ชำระเงินโดยโอนเข้าบัญชี" ในใบเสนอราคา/แจ้งหนี้/วางบิล ที่ผู้ออกเป็นบริษัท (ปิดได้ด้วย data.showBank)
 - **Payees**: id, type(j/p), name, taxId, branch, address, tags(JSON tagIds), defItem(JSON {cat,desc,rate}), form, active, createdBy, createdAt, updatedAt, lastUsed
   - ตอนบันทึกใบ backend ผูกใบกับรายชื่อ (payeeId → เลขภาษี+สาขา → ชื่อ) ถ้าไม่เจอจะสร้างรายชื่อใหม่ให้
 - **Tags**: id, name, color (สีจากชุด TAG_COLORS), createdAt
@@ -131,6 +132,7 @@ Apps Script Web App  …/exec
 - `bootstrap` ส่งเอกสารทั้งหมด — ถ้าเกินหลายพันใบ ควรทำแบ่งหน้า/กรองตามปีฝั่ง backend
 
 ## สถานะล่าสุด
+- v1.7.0 (2026-11-27): บริษัทผู้หักมีเบอร์ติดต่อและบัญชีธนาคาร (ธนาคาร/เลขที่/ชื่อบัญชี) แสดงบนเอกสาร
 - v1.6.6 (2026-11-27): ทุกเอกสาร (ใบเบิก/บิล/มอบอำนาจ) ซิงก์บริษัทกับเมนูด้านบน — `DM.setCompany()`:
   เปลี่ยนเมนูด้านบน → เอกสารที่ยังไม่บันทึกเปลี่ยนบริษัท (บิล: ผู้ออกถ้าเป็นบริษัท, มอบอำนาจ: ผู้มอบถ้าเป็นบริษัท + "เขียนที่");
   เลือกบริษัทเป็นผู้ออก/ผู้มอบในฟอร์ม → เมนูด้านบนเปลี่ยนตาม; ถ้าผู้ออก/ผู้มอบเป็นบุคคลธรรมดา เมนูด้านบนเปลี่ยนแค่บริษัทเจ้าของเอกสาร

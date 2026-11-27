@@ -372,12 +372,13 @@
   }
 
   /* ================= companies (admin) ================= */
-  function coBlank() { return { id: null, name: '', taxId: '', branch: '', address: '', signer: '', signerTitle: '', sig: undefined, stamp: undefined }; }
+  function coBlank() { return { id: null, name: '', taxId: '', branch: '', address: '', phone: '', signer: '', signerTitle: '', bankName: '', bankAccount: '', bankAccountName: '', sig: undefined, stamp: undefined }; }
   function renderCompanies() {
     $('#coCards').innerHTML = S.companies.length ? S.companies.map(c => {
       const n = S.certs.filter(x => x.companyId === c.id).length;
       return `<div class="co${c.id === S.coId ? ' on' : ''}"><h3>${esc(c.name)}</h3>
       <p>เลขผู้เสียภาษี ${esc(c.taxId || '–')} · ${esc(c.branch || 'สำนักงานใหญ่')} · ${n} ใบ</p>
+      ${c.phone || c.bankAccount ? `<p>${c.phone ? '☎ ' + esc(c.phone) : ''}${c.phone && c.bankAccount ? ' · ' : ''}${c.bankAccount ? '🏦 ' + esc(c.bankName || '') + ' ' + esc(c.bankAccount) : ''}</p>` : ''}
       <div class="badges"><span class="badge${c.sigFileId ? ' y' : ''}">${c.sigFileId ? '✓ ' : ''}ลายเซ็น</span><span class="badge${c.stampFileId ? ' y' : ''}">${c.stampFileId ? '✓ ' : ''}ตรายาง</span></div>
       <div class="row">${c.id === S.coId ? '<span class="hint">ใช้งานอยู่</span>' : `<button type="button" data-use="${esc(c.id)}">ใช้บริษัทนี้</button>`}<button type="button" class="ghost" data-edit="${esc(c.id)}">แก้ไข</button><button type="button" class="ghost danger" data-del="${esc(c.id)}">ลบ</button></div></div>`;
     }).join('') : '<div class="empty">ยังไม่มีบริษัท — กรอกฟอร์มเพื่อเพิ่มบริษัทแรก<br>เพิ่มได้หลายบริษัท แล้วสลับได้จากเมนูด้านบน</div>';
