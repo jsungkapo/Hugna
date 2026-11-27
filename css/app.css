@@ -174,8 +174,9 @@ legend{font-weight:600;font-size:17px;padding:0;margin-bottom:8px}
 .stbar button{min-height:40px}
 .badge.st-pend{background:#fff1e0;color:#a14a00}.badge.st-ok{background:#dff3e5;color:#146c35}.badge.st-paid{background:#dde9ff;color:#1d4fb8}.badge.st-no{background:#fde2e0;color:#a5281b}
 .choose{display:grid;gap:8px}
-.choose button{justify-content:flex-start;text-align:left;gap:12px;min-height:66px;padding:10px 14px}
-.choose .ci{font-size:26px;width:36px;text-align:center;flex:none}
+.choose button{justify-content:flex-start;text-align:left;gap:12px;min-height:80px;padding:8px 14px 8px 8px}
+.choose .ci{width:64px;height:64px;flex:none;border-radius:12px;background:var(--logo-bg)}
+.dochead .dicon{width:40px;height:40px;border-radius:8px;background:var(--logo-bg)}
 .choose b{display:block;font-size:16px}.choose small{display:block;color:var(--mute);font-size:13px;font-weight:400}
 .typechips{margin-bottom:10px}
 .cc .dt-l{font-size:12px;font-weight:600;color:var(--brand)}

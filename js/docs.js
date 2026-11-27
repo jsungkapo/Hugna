@@ -7,9 +7,9 @@ window.DocsModule = function (X) {
   const { money, num, r2, dShort, dLong } = C;
 
   const TYPES = {
-    expense: { label: 'ใบเบิกเงิน', desc: 'พนักงานเบิกค่าใช้จ่ายจากบริษัท ถ่ายรูปใบเสร็จเป็นรายการได้', icon: '🧾' },
-    bill: { label: 'ใบแจ้งหนี้ / ใบวางบิล / ใบเสร็จ', desc: 'ออกในนามบริษัทหรือบุคคลธรรมดา รวมถึงใบเสนอราคา', icon: '📄' },
-    poa: { label: 'หนังสือมอบอำนาจ', desc: 'มอบอำนาจจากบริษัทหรือบุคคลธรรมดา', icon: '✍️' }
+    expense: { label: 'ใบเบิกเงิน', desc: 'พนักงานเบิกค่าใช้จ่ายจากบริษัท ถ่ายรูปใบเสร็จเป็นรายการได้', icon: 'img/doc-expense.png' },
+    bill: { label: 'ใบแจ้งหนี้ / ใบวางบิล / ใบเสร็จ', desc: 'ออกในนามบริษัทหรือบุคคลธรรมดา รวมถึงใบเสนอราคา', icon: 'img/doc-bill.png' },
+    poa: { label: 'หนังสือมอบอำนาจ', desc: 'มอบอำนาจจากบริษัทหรือบุคคลธรรมดา', icon: 'img/doc-poa.png' }
   };
   const SUB = {
     qt: { th: 'ใบเสนอราคา', en: 'QUOTATION', issuer: 'ผู้เสนอราคา', cust: 'ผู้อนุมัติสั่งซื้อ' },
@@ -74,7 +74,7 @@ window.DocsModule = function (X) {
   function render() {
     if (!D2) return;
     const ro = !canEdit(D2), d = D2.data, c = co(D2.companyId);
-    let h = `<div class="dochead"><span class="dtype">${TYPES[D2.type].icon} ${esc(label(D2))}</span>${statusBadge(D2)}${D2.id ? `<span class="hint">${esc(D2.no)}</span>` : ''}</div>`;
+    let h = `<div class="dochead"><img class="dicon" src="${TYPES[D2.type].icon}" alt=""><span class="dtype">${esc(label(D2))}</span>${statusBadge(D2)}${D2.id ? `<span class="hint">${esc(D2.no)}</span>` : ''}</div>`;
     if (ro) h += `<div class="note">${D2.type === 'expense' && D2.createdBy === S.user.id ? 'ใบเบิกนี้อนุมัติแล้ว แก้ไขไม่ได้' : 'ดูอย่างเดียว — เอกสารนี้ออกโดยผู้อื่น'}</div>`;
     if (D2.type === 'expense') {
       if (D2.id && isAdmin()) h += `<div class="stbar"><span>สถานะ:</span>${['approved', 'paid', 'rejected', 'pending'].filter(s => s !== D2.status).map(s => `<button type="button" data-st="${s}" class="${s === 'rejected' ? 'ghost danger' : s === 'pending' ? 'ghost' : 'pri'}">${{ approved: '✓ อนุมัติ', paid: '💸 จ่ายแล้ว', rejected: 'ไม่อนุมัติ', pending: 'กลับเป็นรออนุมัติ' }[s]}</button>`).join('')}</div>`;
@@ -369,8 +369,8 @@ window.DocsModule = function (X) {
   /* ---------- เมนูเลือกเอกสาร ---------- */
   function chooser(onWht) {
     dialog(`<h3 style="margin:0">ออกเอกสารใหม่</h3><div class="choose">
-      <button type="button" data-new="wht"><span class="ci">🧮</span><span><b>หนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ)</b><small>ออกให้ผู้ถูกหักภาษี</small></span></button>
-      ${Object.keys(TYPES).map(k => `<button type="button" data-new="${k}"><span class="ci">${TYPES[k].icon}</span><span><b>${TYPES[k].label}</b><small>${TYPES[k].desc}</small></span></button>`).join('')}
+      <button type="button" data-new="wht"><img class="ci" src="img/doc-wht.png" alt=""><span><b>หนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ)</b><small>ออกให้ผู้ถูกหักภาษี</small></span></button>
+      ${Object.keys(TYPES).map(k => `<button type="button" data-new="${k}"><img class="ci" src="${TYPES[k].icon}" alt=""><span><b>${TYPES[k].label}</b><small>${TYPES[k].desc}</small></span></button>`).join('')}
       </div><div class="row"><button type="button" class="ghost" data-close>ปิด</button></div>`);
     $('#dlg').onclick = e => { const b = e.target.closest('[data-new]'); if (!b) return; closeDlg(); if (b.dataset.new === 'wht') onWht(); else newDoc(b.dataset.new); };
   }

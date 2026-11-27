@@ -1,8 +1,8 @@
 /* HugNa — service worker
  * VERSION ถูกแก้โดย scripts/bump-version.sh — เปลี่ยนเลขแล้วเบราว์เซอร์จะติดตั้ง SW ใหม่และล้างแคชเก่า */
-const VERSION = '1.6.3';
+const VERSION = '1.6.4';
 const CACHE = 'hugna-' + VERSION;
-const SHELL = ['./', 'index.html', 'icons/icon-192.png', 'img/logo.png', 'img/mascot.png', 'img/wordmark.png'];
+const SHELL = ['./', 'index.html', 'icons/icon-192.png', 'img/logo.png', 'img/mascot.png', 'img/wordmark.png', 'img/doc-wht.png', 'img/doc-expense.png', 'img/doc-bill.png', 'img/doc-poa.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
