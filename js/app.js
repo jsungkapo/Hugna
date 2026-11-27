@@ -125,6 +125,7 @@
   }
   $('#coSel').onchange = e => {
     S.coId = e.target.value; LS.set('lastCo', S.coId);
+    const cur = DM.current(); if (cur && cur.type === 'expense' && !cur.id) DM.setCompany(S.coId);
     if (!D.id) { D.companyId = S.coId; D.no = ''; }
     renderList(); fillForm(); renderCompanies();
   };
@@ -944,7 +945,8 @@
   if (isIOS && !standalone) $('#iosHelp').open = true;
 
   const DM = window.DocsModule({ S, $, $$, esc, toast, dialog, closeDlg, ask, busy, co, imgsFor, filesOf, uploadNow, prepFile, attRow, attClick,
-    saveCache, isAdmin, go, C, uid, clone, todayISO, onChange: () => { renderList(); } });
+    saveCache, isAdmin, go, C, uid, clone, todayISO, onChange: () => { renderList(); },
+    syncCompany: id => { S.coId = id; LS.set('lastCo', id); renderCoSel(); if (!D.id) { D.companyId = id; D.no = ''; } renderList(); fillForm(); renderCompanies(); } });
 
   boot();
 })();

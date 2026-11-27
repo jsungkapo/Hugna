@@ -10,23 +10,23 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="HugNa">
-<link rel="manifest" href="manifest.json?v=1.6.4">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png?v=1.6.4">
-<link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png?v=1.6.4">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.6.4">
+<link rel="manifest" href="manifest.json?v=1.6.5">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png?v=1.6.5">
+<link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png?v=1.6.5">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.6.5">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/app.css?v=1.6.4">
+<link rel="stylesheet" href="css/app.css?v=1.6.5">
 </head>
 <body>
 
 <!-- ===== หน้าเริ่มต้น ===== -->
-<div id="boot" class="screen center"><img src="img/logo.png?v=1.6.4" alt="HugNa" class="logo"><p class="mute">กำลังโหลด…</p><p id="bootErr" class="err" hidden></p><button type="button" id="bootRetry" hidden>ลองใหม่</button></div>
+<div id="boot" class="screen center"><img src="img/logo.png?v=1.6.5" alt="HugNa" class="logo"><p class="mute">กำลังโหลด…</p><p id="bootErr" class="err" hidden></p><button type="button" id="bootRetry" hidden>ลองใหม่</button></div>
 
 <div id="scr-url" class="screen center" hidden>
   <form class="card auth" id="urlForm">
-    <img src="img/logo.png?v=1.6.4" alt="HugNa" class="logo">
+    <img src="img/logo.png?v=1.6.5" alt="HugNa" class="logo">
     <h1>ตั้งค่าระบบ HugNa</h1>
     <p class="mute">วาง URL ของ Apps Script Web App (ลงท้ายด้วย <code>/exec</code>) ตามขั้นตอนในไฟล์ SETUP.md</p>
     <label>URL ระบบ<input id="urlIn" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec" required></label>
@@ -37,7 +37,7 @@
 
 <div id="scr-login" class="screen center" hidden>
   <form class="card auth" id="loginForm" autocomplete="on">
-    <img src="img/logo.png?v=1.6.4" alt="HugNa" class="logo">
+    <img src="img/logo.png?v=1.6.5" alt="HugNa" class="logo">
     <h1>เข้าสู่ระบบ HugNa</h1>
     <label>ชื่อผู้ใช้<input id="lgUser" autocomplete="username" autocapitalize="none" required></label>
     <label>รหัสผ่าน<input id="lgPass" type="password" autocomplete="current-password" required></label>
@@ -49,7 +49,7 @@
 
 <div id="scr-setup" class="screen center" hidden>
   <form class="card auth" id="setupForm">
-    <img src="img/logo.png?v=1.6.4" alt="HugNa" class="logo">
+    <img src="img/logo.png?v=1.6.5" alt="HugNa" class="logo">
     <h1>ตั้งค่าครั้งแรก</h1>
     <p class="mute">ยังไม่มีผู้ใช้ในระบบ สร้างบัญชีผู้ดูแล (admin) คนแรก</p>
     <label>ชื่อที่แสดง<input id="suName" required placeholder="เช่น คุณเมย์"></label>
@@ -64,7 +64,7 @@
 <!-- ===== แอป ===== -->
 <div id="app" hidden>
   <header class="top">
-    <div class="brand"><img src="img/mascot.png?v=1.6.4" alt="" class="mascot"><img src="img/wordmark.png?v=1.6.4" alt="HugNa" class="wm"></div>
+    <div class="brand"><img src="img/mascot.png?v=1.6.5" alt="" class="mascot"><img src="img/wordmark.png?v=1.6.5" alt="HugNa" class="wm"></div>
     <select id="coSel" aria-label="ออกในนามบริษัท"></select>
   </header>
   <div class="updbar" id="updBar" hidden><span>มีเวอร์ชันใหม่ <b id="updV"></b></span><button type="button" id="updNow">อัปเดตเลย</button></div>
@@ -255,11 +255,11 @@
 <div class="ov" id="ov" hidden><div class="dlg" id="dlg"></div></div>
 <div class="toast" id="toast" role="status"></div>
 
-<script src="js/config.js?v=1.6.4"></script>
-<script src="js/api.js?v=1.6.4"></script>
-<script src="js/cert.js?v=1.6.4"></script>
-<script src="js/scan.js?v=1.6.4"></script>
-<script src="js/docs.js?v=1.6.4"></script>
-<script src="js/app.js?v=1.6.4"></script>
+<script src="js/config.js?v=1.6.5"></script>
+<script src="js/api.js?v=1.6.5"></script>
+<script src="js/cert.js?v=1.6.5"></script>
+<script src="js/scan.js?v=1.6.5"></script>
+<script src="js/docs.js?v=1.6.5"></script>
+<script src="js/app.js?v=1.6.5"></script>
 </body>
 </html>

@@ -80,7 +80,7 @@ window.DocsModule = function (X) {
       if (D2.id && isAdmin()) h += `<div class="stbar"><span>สถานะ:</span>${['approved', 'paid', 'rejected', 'pending'].filter(s => s !== D2.status).map(s => `<button type="button" data-st="${s}" class="${s === 'rejected' ? 'ghost danger' : s === 'pending' ? 'ghost' : 'pri'}">${{ approved: '✓ อนุมัติ', paid: '💸 จ่ายแล้ว', rejected: 'ไม่อนุมัติ', pending: 'กลับเป็นรออนุมัติ' }[s]}</button>`).join('')}</div>`;
       if (D2.status === 'rejected' && d.rejectNote) h += `<div class="note">เหตุผลที่ไม่อนุมัติ: ${esc(d.rejectNote)}</div>`;
       h += `<fieldset><legend>ข้อมูลการเบิก</legend>${headFields()}
-        <p class="hint">บริษัทผู้จ่ายเงิน: <b>${esc(c ? c.name : '— เลือกบริษัทที่เมนูด้านบน —')}</b></p>
+        <label>บริษัทที่เบิก (ผู้จ่ายเงิน)<select data-co>${S.companies.map(x => `<option value="${esc(x.id)}"${x.id === D2.companyId ? ' selected' : ''}>${esc(x.name)}</option>`).join('') || '<option value="">— ยังไม่มีบริษัท —</option>'}</select></label>
         <div class="g2">${inp('ผู้เบิก', 'data.requester')}${inp('แผนก / ตำแหน่ง', 'data.dept')}</div></fieldset>
         <fieldset><legend>รายการที่เบิก</legend>
         <label class="btn scanbtn">📷 ถ่ายรูปใบเสร็จ → เพิ่มเป็นรายการ<input type="file" accept="image/*" id="exScan" hidden></label>
@@ -174,7 +174,10 @@ window.DocsModule = function (X) {
       const a = box.querySelector('[data-amt]'); if (a) a.value = money(lineAmt(it));
       totals(); preview();
     });
-    f.addEventListener('change', e => { if (e.target.dataset.ref) pickRef(e.target.dataset.ref, e.target.value); });
+    f.addEventListener('change', e => {
+      if (e.target.dataset.ref) pickRef(e.target.dataset.ref, e.target.value);
+      if (e.target.dataset.co !== undefined) setCompany(e.target.value, true);
+    });
     f.addEventListener('click', async e => {
       const b = e.target.closest('button'); if (!b) return;
       const d = D2.data;
@@ -186,6 +189,13 @@ window.DocsModule = function (X) {
       else if (b.dataset.st) setStatus(b.dataset.st);
       else if (b.closest('#dAtt')) attClick(e, renderAtt, D2._pending);
     });
+  }
+  /** เปลี่ยนบริษัทของเอกสาร (เลขที่จะรันใหม่ตามบริษัท ถ้ายังไม่บันทึก) */
+  function setCompany(id, fromForm) {
+    if (!D2 || !co(id) || D2.companyId === id) return;
+    D2.companyId = id; if (!D2.id) D2.no = '';
+    render();
+    if (fromForm) X.syncCompany(id);
   }
   function pickRef(which, val) {
     const d = D2.data, snap = val && val !== 'custom' ? snapOf(val) : null;
@@ -376,5 +386,5 @@ window.DocsModule = function (X) {
   }
 
   wire();
-  return { TYPES, SUB, STATUS, label, statusBadge, newDoc, open, chooser, fit, preview: () => D2 && preview(), render: () => D2 && render(), current: () => D2 };
+  return { TYPES, SUB, STATUS, label, statusBadge, newDoc, open, chooser, fit, setCompany, preview: () => D2 && preview(), render: () => D2 && render(), current: () => D2 };
 };
