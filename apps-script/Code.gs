@@ -9,7 +9,7 @@
  * --------------------------------------------------------------
  */
 var HUGNA_BACKEND = true;
-var VERSION = '1.5.0';
+var VERSION = '1.6.0';
 
 var SESSION_DAYS = 30;
 var HASH_ROUNDS = 300;
@@ -23,11 +23,12 @@ var SCHEMA = {
               'status', 'createdBy', 'createdByName', 'createdAt', 'updatedAt'],
   Payees:    ['id', 'type', 'name', 'taxId', 'branch', 'address', 'tags', 'defItem', 'form', 'active', 'createdBy', 'createdAt', 'updatedAt', 'lastUsed'],
   Tags:      ['id', 'name', 'color', 'createdAt'],
+  Docs:      ['id', 'type', 'subtype', 'companyId', 'no', 'docDate', 'status', 'title', 'total', 'data', 'createdBy', 'createdByName', 'createdAt', 'updatedAt', 'deleted'],
   Files:     ['id', 'ownerType', 'ownerId', 'kind', 'name', 'mime', 'size', 'createdBy', 'createdByName', 'createdAt', 'active'],
   Settings:  ['key', 'value'],
   Log:       ['time', 'userId', 'username', 'action', 'detail']
 };
-var JSON_FIELDS = { items: 1, funds: 1, coSnap: 1, tags: 1, defItem: 1, favs: 1 };
+var JSON_FIELDS = { items: 1, funds: 1, coSnap: 1, tags: 1, defItem: 1, favs: 1, data: 1 };
 var JSON_ARRAYS = { items: 1, tags: 1, favs: 1 };
 var TAG_COLORS = ['#2b8a3e', '#e67700', '#c4161c', '#d9480f', '#0b7285', '#1c64d1', '#6741d9', '#a61e4d', '#495057'];
 
@@ -50,7 +51,7 @@ function respond_(req) {
 }
 
 var PUBLIC = { ping: 1, status: 1, setup: 1, login: 1 };
-var ADMIN = { saveCompany: 1, deleteCompany: 1, users: 1, saveUser: 1, log: 1, setCodeRef: 1, system: 1, deleteTag: 1 };
+var ADMIN = { setDocStatus: 1, saveCompany: 1, deleteCompany: 1, users: 1, saveUser: 1, log: 1, setCodeRef: 1, system: 1, deleteTag: 1 };
 
 function dispatch_(req) {
   var action = String(req.action || 'ping');
@@ -119,7 +120,10 @@ var API = {
     var me = rows_('Users').filter(function (u) { return u.id === user.id; })[0];
     var u = me ? cleanUser_(me) : user;
     var files = rows_('Files').filter(function (f) { return String(f.active) !== 'false'; }).map(cleanFile_);
-    return { user: u, companies: companies, certs: certs, payees: payees, tags: tags, files: files, version: VERSION };
+    var docs = rows_('Docs').filter(function (d) { return String(d.deleted) !== 'true' && canSeeDoc_(d, user); }).map(cleanDoc_);
+    var hidden = hiddenDocIds_(user);
+    files = files.filter(function (f) { return !(f.ownerType === 'doc' && hidden[f.ownerId]); });
+    return { user: u, companies: companies, certs: certs, payees: payees, tags: tags, files: files, docs: docs, version: VERSION };
   },
 
   /** รูปลายเซ็น/ตรายาง (ส่งเป็น data URL) */
@@ -257,9 +261,93 @@ var API = {
     return { text: text.replace(/^\uFEFF/, ''), engine: 'google' };
   },
 
+  /* ---------- เอกสารอื่น: ใบเบิกเงิน / ใบวางบิล-แจ้งหนี้-ใบเสร็จ-เสนอราคา / หนังสือมอบอำนาจ ---------- */
+  saveDoc: function (req, user) {
+    var d = req.doc || {};
+    var type = DOC_TYPES[d.type] ? d.type : '';
+    if (!type) throw err_('ไม่รู้จักประเภทเอกสาร');
+    var subtype = type === 'bill' ? (BILL_SUB[d.subtype] ? d.subtype : 'iv') : '';
+    var data = d.data && typeof d.data === 'object' ? d.data : {};
+    if (JSON.stringify(data).length > 40000) throw err_('ข้อมูลเอกสารยาวเกินไป');
+    if (!d.companyId || !rows_('Companies').some(function (c) { return c.id === d.companyId; })) throw err_('ยังไม่ได้เลือกบริษัท');
+    var total = 0;
+    if (type === 'expense') {
+      (data.items || []).forEach(function (it) { total += num_(it.amount); });
+      if (!(total > 0)) throw err_('ใส่รายการเบิกอย่างน้อย 1 รายการ');
+    } else if (type === 'bill') {
+      var sub = 0; (data.items || []).forEach(function (it) { sub += round2_(num_(it.qty || 1) * num_(it.price)); });
+      if (!(sub > 0)) throw err_('ใส่รายการอย่างน้อย 1 รายการ');
+      total = sub + (data.vat ? round2_(sub * 0.07) : 0);
+      if (!data.issuerSnap || !String(data.issuerSnap.name || '').trim()) throw err_('เลือกผู้ออกเอกสาร');
+    } else if (type === 'poa') {
+      if (!data.grantorSnap || !String(data.grantorSnap.name || '').trim()) throw err_('เลือกผู้มอบอำนาจ');
+      if (!data.grantee || !String(data.grantee.name || '').trim()) throw err_('ใส่ชื่อผู้รับมอบอำนาจ');
+      if (!String(data.matter || '').trim()) throw err_('ใส่เรื่องที่มอบอำนาจ');
+    }
+    return withLock_(function () {
+      var all = rows_('Docs');
+      var existing = d.id ? all.filter(function (x) { return x.id === d.id && String(x.deleted) !== 'true'; })[0] : null;
+      if (existing && user.role !== 'admin' && existing.createdBy !== user.id) throw err_('แก้ได้เฉพาะเอกสารที่คุณออกเอง', 'forbidden');
+      if (existing && existing.type === 'expense' && user.role !== 'admin' && existing.status !== 'pending' && existing.status !== 'rejected')
+        throw err_('ใบเบิกนี้อนุมัติแล้ว แก้ไขไม่ได้', 'forbidden');
+      var date = str_(d.docDate, 10) || now_().slice(0, 10);
+      var prefix = docPrefix_(type, subtype);
+      var no = str_(d.no, 30);
+      if (!no) no = nextDocNo_(all, prefix, d.companyId, date);
+      if (all.some(function (x) { return x.no === no && x.companyId === d.companyId && x.id !== (existing && existing.id) && String(x.deleted) !== 'true'; }))
+        throw err_('เลขที่ ' + no + ' ถูกใช้แล้ว', 'duplicate');
+      if (type === 'expense') {
+        data.requesterId = existing ? (existing.data || {}).requesterId || existing.createdBy : user.id;
+        data.requester = str_(data.requester || (existing ? (existing.data || {}).requester : user.name), 120);
+        if (existing) { ['approvedBy', 'approvedAt', 'paidAt', 'paidBy', 'rejectNote'].forEach(function (k) { data[k] = (existing.data || {})[k]; }); }
+      }
+      var rec = {
+        id: existing ? existing.id : Utilities.getUuid(), type: type, subtype: subtype, companyId: d.companyId, no: no, docDate: date,
+        status: existing ? (existing.type === 'expense' && existing.status === 'rejected' ? 'pending' : existing.status) : (type === 'expense' ? 'pending' : 'active'),
+        title: str_(docTitle_(type, data), 200), total: round2_(total), data: data,
+        createdBy: existing ? existing.createdBy : user.id, createdByName: existing ? existing.createdByName : user.name,
+        createdAt: existing ? existing.createdAt : now_(), updatedAt: now_(), deleted: false
+      };
+      if (existing) update_('Docs', 'id', rec.id, rec); else append_('Docs', rec);
+      log_(user, existing ? 'editDoc' : 'newDoc', DOC_TYPES[type] + ' ' + no + ' ' + rec.title);
+      return cleanDoc_(rec);
+    });
+  },
+
+  deleteDoc: function (req, user) {
+    return withLock_(function () {
+      var d = rows_('Docs').filter(function (x) { return x.id === req.id && String(x.deleted) !== 'true'; })[0];
+      if (!d) throw err_('ไม่พบเอกสาร');
+      if (user.role !== 'admin' && (d.createdBy !== user.id || (d.type === 'expense' && d.status !== 'pending' && d.status !== 'rejected')))
+        throw err_('ลบไม่ได้ (ลบได้เฉพาะเอกสารของคุณที่ยังไม่อนุมัติ)', 'forbidden');
+      update_('Docs', 'id', d.id, { deleted: true, updatedAt: now_() });
+      log_(user, 'deleteDoc', d.no + ' ' + d.title);
+      return true;
+    });
+  },
+
+  /** ใบเบิกเงิน: admin อนุมัติ / ไม่อนุมัติ / จ่ายแล้ว / กลับเป็นรออนุมัติ */
+  setDocStatus: function (req, user) {
+    var st = String(req.status || '');
+    if (['pending', 'approved', 'rejected', 'paid'].indexOf(st) < 0) throw err_('สถานะไม่ถูกต้อง');
+    return withLock_(function () {
+      var d = rows_('Docs').filter(function (x) { return x.id === req.id && String(x.deleted) !== 'true'; })[0];
+      if (!d || d.type !== 'expense') throw err_('ไม่พบใบเบิก');
+      var data = d.data || {};
+      if (st === 'approved') { data.approvedBy = user.name; data.approvedAt = now_(); data.rejectNote = ''; }
+      if (st === 'paid') { if (!data.approvedBy) { data.approvedBy = user.name; data.approvedAt = now_(); } data.paidBy = user.name; data.paidAt = now_(); }
+      if (st === 'rejected') { data.rejectNote = str_(req.note, 300); data.approvedBy = ''; data.approvedAt = ''; data.paidAt = ''; }
+      if (st === 'pending') { data.approvedBy = ''; data.approvedAt = ''; data.paidAt = ''; data.paidBy = ''; }
+      update_('Docs', 'id', d.id, { status: st, data: data, updatedAt: now_() });
+      log_(user, 'docStatus', d.no + ' → ' + st);
+      d.status = st; d.data = data; d.updatedAt = now_();
+      return cleanDoc_(d);
+    });
+  },
+
   /* ---------- ไฟล์แนบ: รูปบัตรประชาชน (รายชื่อ) / invoice (ใบ) ---------- */
   uploadFile: function (req, user) {
-    var ownerType = req.ownerType === 'payee' ? 'payee' : req.ownerType === 'cert' ? 'cert' : '';
+    var ownerType = { payee: 'payee', cert: 'cert', doc: 'doc' }[req.ownerType] || '';
     if (!ownerType) throw err_('ไม่ระบุว่าแนบกับอะไร');
     var kind = FILE_KINDS[req.kind] ? req.kind : 'other';
     var m = /^data:([\w.+\-]+\/[\w.+\-]+);base64,(.+)$/.exec(String(req.dataUrl || ''));
@@ -268,10 +356,12 @@ var API = {
     if (bytes.length > 8000000) throw err_('ไฟล์ใหญ่เกิน 8 MB');
     var owner = ownerType === 'cert'
       ? rows_('Certs').filter(function (x) { return x.id === req.ownerId && x.status !== 'deleted'; })[0]
+      : ownerType === 'doc'
+      ? rows_('Docs').filter(function (x) { return x.id === req.ownerId && String(x.deleted) !== 'true'; })[0]
       : rows_('Payees').filter(function (x) { return x.id === req.ownerId && String(x.active) !== 'false'; })[0];
     if (!owner) throw err_('ไม่พบเอกสาร/รายชื่อที่จะแนบ');
-    if (ownerType === 'cert' && user.role !== 'admin' && owner.createdBy !== user.id) throw err_('แนบไฟล์ได้เฉพาะใบที่คุณออกเอง', 'forbidden');
-    var label = ownerType === 'cert' ? owner.book + '-' + owner.no + ' ' + owner.payeeName : owner.name;
+    if (ownerType !== 'payee' && user.role !== 'admin' && owner.createdBy !== user.id) throw err_('แนบไฟล์ได้เฉพาะเอกสารที่คุณออกเอง', 'forbidden');
+    var label = ownerType === 'cert' ? owner.book + '-' + owner.no + ' ' + owner.payeeName : ownerType === 'doc' ? owner.no + ' ' + owner.title : owner.name;
     var fname = Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyyMMdd-HHmm') + ' ' + FILE_KINDS[kind] + ' ' +
       String(label).replace(/[\\\/:*?"<>|]/g, ' ').slice(0, 80) + '.' + FILE_MIMES[m[1]];
     var file = subfolder_(FILE_KINDS[kind]).createFile(Utilities.newBlob(bytes, m[1], fname));
@@ -282,9 +372,10 @@ var API = {
     return cleanFile_(rec);
   },
 
-  file: function (req) {
+  file: function (req, user) {
     var f = rows_('Files').filter(function (x) { return x.id === req.fileId && String(x.active) !== 'false'; })[0];
     if (!f) throw err_('ไม่พบไฟล์', 'not_found');
+    if (f.ownerType === 'doc' && hiddenDocIds_(user)[f.ownerId]) throw err_('ไม่พบไฟล์', 'not_found');
     var blob = DriveApp.getFileById(f.id).getBlob();
     return { fileId: f.id, mime: f.mime, dataUrl: 'data:' + f.mime + ';base64,' + Utilities.base64Encode(blob.getBytes()) };
   },
@@ -615,8 +706,37 @@ function saveImage_(dataUrl, name) {
   return folder_().createFile(blob).getId();
 }
 
+/* ================= docs ================= */
+var DOC_TYPES = { expense: 'ใบเบิกเงิน', bill: 'ใบวางบิล/แจ้งหนี้/ใบเสร็จ', poa: 'หนังสือมอบอำนาจ' };
+var BILL_SUB = { bn: 'BN', iv: 'IV', re: 'RE', qt: 'QT' };
+function docPrefix_(type, subtype) { return type === 'expense' ? 'EX' : type === 'poa' ? 'POA' : BILL_SUB[subtype]; }
+/** เลขที่: PREFIX + ปี พ.ศ. + '-' + ลำดับ 4 หลัก เช่น IV2569-0001 (รันแยกตามบริษัท) */
+function nextDocNo_(all, prefix, companyId, date) {
+  var be = (parseInt(String(date).slice(0, 4), 10) || new Date().getFullYear()) + 543, head = prefix + be + '-', max = 0;
+  all.forEach(function (x) { if (x.companyId === companyId && String(x.no).indexOf(head) === 0) max = Math.max(max, parseInt(String(x.no).slice(head.length), 10) || 0); });
+  return head + ('000' + (max + 1)).slice(-4);
+}
+function docTitle_(type, data) {
+  if (type === 'expense') return data.requester || '';
+  if (type === 'bill') return (data.customer && data.customer.name) || '';
+  if (type === 'poa') return (data.grantee && data.grantee.name) || '';
+  return '';
+}
+/** ใบเบิกเงิน: ผู้ใช้ทั่วไปเห็นเฉพาะของตัวเอง */
+function hiddenDocIds_(user) {
+  var h = {}; if (user.role === 'admin') return h;
+  rows_('Docs').forEach(function (d) { if (!canSeeDoc_(d, user)) h[d.id] = 1; });
+  return h;
+}
+function canSeeDoc_(d, user) { return user.role === 'admin' || d.type !== 'expense' || d.createdBy === user.id; }
+function cleanDoc_(d) {
+  return { id: d.id, type: d.type, subtype: d.subtype || '', companyId: d.companyId, no: String(d.no), docDate: String(d.docDate || '').slice(0, 10),
+           status: d.status, title: d.title, total: num_(d.total), data: d.data || {}, createdBy: d.createdBy, createdByName: d.createdByName,
+           createdAt: d.createdAt, updatedAt: d.updatedAt };
+}
+
 /* ================= files ================= */
-var FILE_KINDS = { idcard: 'บัตรประชาชน', invoice: 'Invoice', other: 'เอกสารอื่น' };
+var FILE_KINDS = { idcard: 'บัตรประชาชน', invoice: 'Invoice', receipt: 'ใบเสร็จ (เบิกเงิน)', other: 'เอกสารอื่น' };
 var FILE_MIMES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
 function subfolder_(name) {
   var props = PropertiesService.getScriptProperties(), key = 'FOLDER_' + name, id = props.getProperty(key);

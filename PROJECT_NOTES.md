@@ -28,6 +28,18 @@
 - โหมดมืด: โลโก้วางบนป้ายขาว (`--logo-bg`) เพื่อให้เส้นเขียวเข้มยังเห็น
 - ตัวใบ 50 ทวิ ใช้สีเอกสารทางการ (ขาว/ดำ/หมึกน้ำเงิน) ไม่เปลี่ยนตามธีม
 
+## เอกสารอื่น (v1.6.0) — js/docs.js
+กด "ออกใบใหม่" → เมนูเลือก: 50 ทวิ (หน้า #edit เดิม) / ใบเบิกเงิน / ใบแจ้งหนี้-ใบวางบิล-ใบเสร็จ-ใบเสนอราคา / หนังสือมอบอำนาจ (หน้า #doc)
+- **ใบเบิกเงิน (expense)**: บริษัทที่เลือกด้านบน = ผู้จ่าย; พนักงานกรอกรายการ หรือ "ถ่ายรูปใบเสร็จ" → OCR → เพิ่มรายการ + แนบรูป (kind receipt)
+  สถานะ pending → approved / rejected (มีเหตุผล) → paid; เปลี่ยนสถานะได้เฉพาะ admin (`setDocStatus`); ผู้ใช้ทั่วไปแก้/ลบได้เฉพาะของตัวเองที่ยังรออนุมัติหรือถูกปฏิเสธ (แก้แล้วกลับเป็นรออนุมัติ)
+  ผู้ใช้ทั่วไปเห็นเฉพาะใบเบิกของตัวเอง (รวมไฟล์แนบ) — admin เห็นทั้งหมด; ใส่ลายเซ็นผู้ลงนามของบริษัทที่ช่องผู้อนุมัติเมื่ออนุมัติแล้ว
+- **บิล (bill)** subtype qt ใบเสนอราคา / iv ใบแจ้งหนี้ / bn ใบวางบิล / re ใบเสร็จรับเงิน: ผู้ออกเอกสาร = บริษัทผู้หัก หรือ รายชื่อ (เช่น บุคคลธรรมดา);
+  ลูกค้า = บริษัทเรา / รายชื่อ / กรอกเอง; รายการ จำนวน×ราคา, VAT 7% (เลือก), หัก ณ ที่จ่าย (แสดงยอดสุทธิ); ลายเซ็น/ตราเฉพาะผู้ออกที่เป็นบริษัท
+- **หนังสือมอบอำนาจ (poa)**: ผู้มอบ = บริษัท (ลงนามโดย signer ของบริษัท + ตรา) หรือบุคคลธรรมดาจากรายชื่อ; ผู้รับมอบ = บุคคลจากรายชื่อหรือกรอกเอง;
+  เรื่องที่มอบมีปุ่มลัด, พยาน 2 คน, ช่องอากรแสตมป์ 10/30 บาท
+- เลขที่รันอัตโนมัติฝั่ง backend: EX / QT / IV / BN / RE / POA + ปี พ.ศ. + '-' + 4 หลัก (แยกตามบริษัทที่เลือก)
+- หน้าเอกสาร: ชิปกรองประเภท (ทั้งหมด / 50 ทวิ / ใบเบิกเงิน / แจ้งหนี้-วางบิล-ใบเสร็จ / มอบอำนาจ)
+
 ## สถาปัตยกรรม
 ```
 iPhone / คอม (เบราว์เซอร์, PWA)
@@ -52,6 +64,7 @@ Apps Script Web App  …/exec
 | `js/api.js` | เรียก backend, เก็บ token/แคชใน localStorage (`hugna_*`) |
 | `js/cert.js` | สร้าง HTML ใบ 50 ทวิ, จำนวนเงินเป็นตัวอักษรไทย, ส่งออก PDF/PNG (html2canvas 1.4.1 + jsPDF 2.5.1 โหลดจาก cdnjs ตอนกดส่งออก) |
 | `js/scan.js` | OCR: ย่อรูป → backend `ocr` (Google Drive OCR) → ถ้าไม่ได้ใช้ Tesseract.js 5.1.1 (tha+eng จาก jsdelivr/tessdata) ในเครื่อง; `parse()` แยกข้อมูล |
+| `js/docs.js` | เอกสารอื่น: ฟอร์ม, กระดาษ A4 (`.dsheet`), เมนูเลือกเอกสาร — app.js เรียก `DocsModule(ctx)` ก่อน boot() |
 | `js/app.js` | UI ทั้งหมด: routing ด้วย hash `#list #edit #payees #companies #settings` |
 | `sw.js` | service worker: หน้าเว็บ network-first, ไฟล์ที่มี ?v= cache-first, ไม่แคช API |
 | `manifest.json`, `icons/` | PWA |
@@ -71,6 +84,8 @@ Apps Script Web App  …/exec
 - **Tags**: id, name, color (สีจากชุด TAG_COLORS), createdAt
 - **Certs**: id, companyId, payeeId, book, no, issueDate, form(0–6), seq, payeeType(j/p), payeeName, payeeTaxId, payeeBranch, payeeAddress, payer(0–3), payerOther, items(JSON), funds(JSON), totalAmount, totalTax, useSig, useStamp, coSnap(JSON สำเนาข้อมูลบริษัทตอนออกครั้งแรก), status(active/deleted), createdBy, createdByName, createdAt, updatedAt
   - items: `[{id, cat:'c1'|'c2'|'c3'|'c4a'|'c4b'|'c5'|'c6', desc, date, amount, rate, custom?}]`
+- **Docs**: id, type(expense/bill/poa), subtype(qt/iv/bn/re), companyId, no, docDate, status(pending/approved/rejected/paid หรือ active), title, total, data(JSON ทั้งหมดของฟอร์ม), createdBy, createdByName, createdAt, updatedAt, deleted
+  - data.issuerSnap / grantorSnap = สำเนาข้อมูลผู้ออก/ผู้มอบ ตอนบันทึก (kind company/person/payee, id, name, taxId, branch, address, signer…)
 - **Files**: id(=Drive fileId), ownerType(cert/payee), ownerId, kind(idcard/invoice/other), name, mime(jpeg/png/webp/pdf), size, createdBy, createdByName, createdAt, active
 - **Settings**: key/value (สำรองไว้ใช้)
 - **Log**: time, userId, username, action, detail
@@ -80,6 +95,7 @@ Apps Script Web App  …/exec
 ## API (action)
 - สาธารณะ: `ping`, `status` (needsSetup), `setup` (สร้าง admin แรก), `login`
 - ล็อกอินแล้ว: `me`, `logout`, `bootstrap` (user+companies+certs+payees+tags), `savePayee`, `deletePayee` (ของตัวเอง/admin), `setFavorite`, `saveTag` (สร้างได้ทุกคน, แก้ได้เฉพาะ admin), `image` (fileId → dataURL), `saveCert`, `deleteCert`, `changePassword`
+- `saveDoc` {doc}, `deleteDoc` {id}, `setDocStatus` {id, status, note} (admin) — ownerType 'doc' ใช้กับ uploadFile ได้
 - `uploadFile` {ownerType, ownerId, kind, name, dataUrl ≤ 8MB} (user แนบกับใบได้เฉพาะใบตัวเอง), `file` {fileId} → dataURL, `deleteFile` (ของตัวเอง/admin)
 - `ocr` (image dataURL → text): อัปโหลดรูปเป็น Google Doc ด้วย Drive REST (`ocrLanguage=th`) ผ่าน `ScriptApp.getOAuthToken()` แล้ว export text และลบไฟล์ทิ้ง
   ต้องเปิด Advanced Service "Drive API" ในโปรเจกต์ Apps Script (SETUP.md ขั้นเสริม) ไม่งั้นได้ code `ocr_unavailable` → หน้าเว็บจำไว้ 6 ชม. แล้วอ่านในเครื่องแทน
@@ -112,6 +128,7 @@ Apps Script Web App  …/exec
 - `bootstrap` ส่งเอกสารทั้งหมด — ถ้าเกินหลายพันใบ ควรทำแบ่งหน้า/กรองตามปีฝั่ง backend
 
 ## สถานะล่าสุด
+- v1.6.0 (2026-11-27): เมนูเลือกเอกสาร + ใบเบิกเงิน, ใบแจ้งหนี้/ใบวางบิล/ใบเสร็จ/ใบเสนอราคา, หนังสือมอบอำนาจ — ทดสอบกับ mock แล้ว
 - v1.5.0 (2026-11-27): เลือกธีมสว่าง/มืด/อัตโนมัติ ในหน้าตั้งค่า
 - v1.4.2 (2026-11-26): Loader v2 — แก้ error "สิทธิ์ไม่เพียงพอ DriveApp.createFolder (auth/drive)": Apps Script เดาสิทธิ์จากโค้ดใน Loader เท่านั้น
   Loader v1 เรียก DriveApp แบบอ่านอย่างเดียว เลยได้ drive.readonly → เพิ่ม `scopesNeeded_()` ที่อ้างถึงคำสั่งเขียน (ไม่ได้รัน) ให้ได้สิทธิ์ drive/spreadsheets เต็ม

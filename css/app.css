@@ -95,13 +95,13 @@ legend{font-weight:600;font-size:17px;padding:0;margin-bottom:8px}
 .inl{display:flex;align-items:center;gap:6px}.inl input{width:96px}
 .tot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:15px;padding-top:4px}.tot b{font-size:20px;white-space:nowrap}
 .pvbar{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--mute);margin-bottom:8px}
-#pv{position:relative;overflow:hidden;border-radius:4px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.12),0 12px 32px -10px rgba(20,30,50,.35)}
-#sheet{transform-origin:0 0;width:794px}
+#pv,#pv2{position:relative;overflow:hidden;border-radius:4px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.12),0 12px 32px -10px rgba(20,30,50,.35)}
+#sheet,#sheet2{transform-origin:0 0;width:794px}
 .actbar{position:fixed;left:0;right:0;bottom:calc(var(--navh) + var(--sab));z-index:15;display:flex;gap:8px;padding:10px max(4vw,14px);background:color-mix(in srgb,var(--panel) 92%,transparent);border-top:1px solid var(--line);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .actbar button{flex:1;padding:8px 6px}
 #v-edit[hidden]+.actbar{display:none}
 .mobile-only{margin-bottom:12px}
-.ed.m-form .pvwrap{display:none}.ed.m-preview #f{display:none}
+.ed.m-form .pvwrap{display:none}.ed.m-preview>form{display:none}
 
 /* --- payees / tags --- */
 .tagbar{flex-wrap:nowrap;overflow-x:auto;margin:0 calc(-1*max(4vw,14px)) 12px;padding:0 max(4vw,14px) 2px;scrollbar-width:none}
@@ -164,6 +164,59 @@ legend{font-weight:600;font-size:17px;padding:0;margin-bottom:8px}
 .viewer img{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff}
 .idbox{display:grid;gap:8px;padding:10px;border:1px dashed var(--line);border-radius:12px}
 
+/* --- เอกสารอื่น --- */
+.g4{display:grid;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(min-width:560px){.g4{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.seg4{flex-wrap:wrap}.seg4 button{flex:1 1 45%;font-size:14px}
+.dochead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.dtype{font-weight:700;font-size:18px}
+.stbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;border-radius:12px;background:var(--tint);margin-bottom:12px}
+.stbar button{min-height:40px}
+.badge.st-pend{background:#fff1e0;color:#a14a00}.badge.st-ok{background:#dff3e5;color:#146c35}.badge.st-paid{background:#dde9ff;color:#1d4fb8}.badge.st-no{background:#fde2e0;color:#a5281b}
+.choose{display:grid;gap:8px}
+.choose button{justify-content:flex-start;text-align:left;gap:12px;min-height:66px;padding:10px 14px}
+.choose .ci{font-size:26px;width:36px;text-align:center;flex:none}
+.choose b{display:block;font-size:16px}.choose small{display:block;color:var(--mute);font-size:13px;font-weight:400}
+.typechips{margin-bottom:10px}
+.cc .dt-l{font-size:12px;font-weight:600;color:var(--brand)}
+
+/* กระดาษเอกสารอื่น */
+.dsheet{font-size:13.5px}
+.dsheet .dh{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px}
+.dsheet .iss{max-width:420px;font-size:12.5px;line-height:1.5}.dsheet .iss b{font-size:17px;display:block;margin-bottom:2px}
+.dsheet .dt{text-align:right;flex:none}.dsheet .dt h1{font-size:26px;margin:0;line-height:1.2}.dsheet .dt .en{font-size:12px;letter-spacing:.14em;color:#555}
+.dsheet .dmeta{display:grid;grid-template-columns:auto auto;gap:2px 10px;justify-content:end;margin-top:8px;font-size:13px}
+.dsheet .dcust{display:grid;grid-template-columns:1fr 250px;border:1px solid #222;margin-top:14px}
+.dsheet .dcust>div{padding:8px 10px;font-size:12.5px;line-height:1.5}.dsheet .dcust>div+div{border-left:1px solid #222}
+.dsheet .dcust b{font-size:14px}.dsheet .lbl{font-size:11.5px;color:#555}
+.dsheet .dmeta2{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;align-content:start}
+.dsheet .dinfo{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin-top:12px;font-size:13px}.dsheet .dinfo div:last-child{grid-column:1/-1}
+.dsheet .dinfo span{color:#555;margin-right:8px}
+.dsheet .dtbl{width:100%;border-collapse:collapse;margin-top:12px}
+.dsheet .dtbl th{background:#f0f0f0;border:1px solid #222;padding:6px;font-weight:600;font-size:12.5px}
+.dsheet .dtbl td{border-left:1px solid #222;border-right:1px solid #222;padding:5px 7px;vertical-align:top;height:24px}
+.dsheet .dtbl tbody tr:last-child td{border-bottom:1px solid #222}
+.dsheet .dtbl .n{text-align:right;white-space:nowrap}.dsheet .dtbl .c{text-align:center}
+.dsheet .dtot{display:grid;grid-template-columns:1fr 270px}
+.dsheet .dtot .words{border:1px solid #222;border-top:0;padding:8px;display:flex;align-items:center;justify-content:center;background:#f6f6f6;font-weight:600;color:#0b2a8a;text-align:center}
+.dsheet .dtot table{width:100%;border-collapse:collapse}.dsheet .dtot td{border:1px solid #222;border-top:0;padding:5px 8px}.dsheet .dtot td.n{text-align:right;font-weight:600;white-space:nowrap}
+.dsheet .dtot tr.grand td{font-weight:700;background:#f0f0f0}
+.dsheet .dnote{margin-top:10px;font-size:12.5px;white-space:pre-wrap}.dsheet .ck{margin-right:10px}
+.dsheet .dsigs{display:grid;grid-template-columns:repeat(var(--n,2),1fr);gap:22px 16px;margin-top:36px}
+.dsheet .dsig{text-align:center;font-size:12.5px;line-height:1.6}
+.dsheet .dsig .area{height:78px;position:relative;border-bottom:1px dotted #333;margin:0 12px 4px}
+.dsheet .dsig .area img.sig{position:absolute;left:50%;bottom:2px;transform:translateX(-50%);max-height:70px;max-width:180px}
+.dsheet .dsig .area img.stamp{position:absolute;right:-4px;bottom:-16px;width:96px;height:96px;object-fit:contain;opacity:.9}
+.dsheet .blankname{display:inline-block;min-width:130px}.dsheet .sd{color:#555;font-size:11.5px}
+.dsheet .dstatus{position:absolute;top:150px;right:56px;border:3px solid currentColor;border-radius:8px;padding:4px 16px;font-weight:700;font-size:22px;transform:rotate(-8deg);opacity:.8}
+.dsheet .dstatus.st-ok{color:#146c35}.dsheet .dstatus.st-paid{color:#1d4fb8}.dsheet .dstatus.st-no{color:#a5281b}
+.poa .duty{position:absolute;left:38px;top:34px;width:92px;height:104px;border:1px dashed #777;font-size:11px;display:grid;place-items:center;align-content:center;text-align:center;color:#555}
+.poa .ptitle{text-align:center;font-size:26px;margin:34px 0 20px}
+.poa .pmeta{display:grid;justify-content:end;gap:6px;font-size:15px;margin-bottom:22px}
+.poa p{text-indent:3em;line-height:2.1;font-size:15px;text-align:left;margin:0 0 6px}
+.poa .fill{display:inline-block;border-bottom:1px dotted #333;padding:0 6px;color:#0b2a8a;font-weight:600;text-indent:0;line-height:1.5}
+.poa .pnote{font-size:12px;color:#555;text-indent:0;margin-top:26px}
+
 /* --- companies / settings --- */
 .cog,.setgrid{display:grid;gap:16px;align-items:start}
 .rowhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.rowhead h2{margin:0}
@@ -204,7 +257,7 @@ legend{font-weight:600;font-size:17px;padding:0;margin-bottom:8px}
   .mobile-only{display:none}
   .top select{max-width:420px}
   .ed{grid-template-columns:minmax(0,470px) minmax(0,1fr)}
-  .ed.m-form .pvwrap,.ed.m-preview #f{display:block}
+  .ed.m-form .pvwrap,.ed.m-preview>form{display:block}
   .pvwrap{position:sticky;top:130px}
   .g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g3>:first-child{grid-column:auto}
   .cog{grid-template-columns:minmax(0,1fr) minmax(0,520px)}

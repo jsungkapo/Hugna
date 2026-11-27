@@ -9,7 +9,7 @@
   const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
   const thisBook = () => String(new Date().getFullYear() + 543);
 
-  const S = { user: null, companies: [], certs: [], payees: [], tags: [], files: [], fileCache: {}, pFilter: null, lTag: '', coId: '', imgs: {}, users: [], started: false, copies: 'both', mode: 'form' };
+  const S = { user: null, companies: [], certs: [], docs: [], lType: '', payees: [], tags: [], files: [], fileCache: {}, pFilter: null, lTag: '', coId: '', imgs: {}, users: [], started: false, copies: 'both', mode: 'form' };
   let D = null, CD = null;
   const isAdmin = () => S.user && S.user.role === 'admin';
   const co = id => S.companies.find(c => c.id === id);
@@ -50,10 +50,10 @@
   }
   $('#bootRetry').onclick = () => { $('#bootRetry').hidden = true; showErr($('#bootErr'), ''); boot(); };
   async function loadAll() { const d = await API.call('bootstrap'); apply(d); saveCache(); }
-  function saveCache() { LS.set('cache', { user: S.user, companies: S.companies, certs: S.certs, payees: S.payees, tags: S.tags, files: S.files }); }
+  function saveCache() { LS.set('cache', { user: S.user, companies: S.companies, certs: S.certs, payees: S.payees, tags: S.tags, files: S.files, docs: S.docs }); }
   function apply(d) {
     S.user = d.user; S.user.favs = S.user.favs || []; S.companies = d.companies || []; S.certs = d.certs || [];
-    S.payees = d.payees || []; S.tags = d.tags || []; S.files = d.files || [];
+    S.payees = d.payees || []; S.tags = d.tags || []; S.files = d.files || []; S.docs = d.docs || [];
     const last = LS.get('lastCo', '');
     S.coId = co(last) ? last : (co(S.coId) ? S.coId : (S.companies[0] && S.companies[0].id) || '');
   }
@@ -101,18 +101,20 @@
   }
 
   /* ================= routing ================= */
-  const VIEWS = ['list', 'edit', 'payees', 'companies', 'settings'];
+  const VIEWS = ['list', 'edit', 'doc', 'payees', 'companies', 'settings'];
   function route() {
     let v = location.hash.slice(1) || 'list';
     if (!VIEWS.includes(v) || (v === 'companies' && !isAdmin())) v = 'list';
     VIEWS.forEach(x => { $('#v-' + x).hidden = x !== v; });
     $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.v === v));
+    if (v === 'doc' && !(DM && DM.current())) v = 'list';
     if (v === 'edit') fit();
+    if (v === 'doc') { VIEWS.forEach(x => { $('#v-' + x).hidden = x !== v; }); DM.fit(); }
     if (v === 'settings') loadSystem();
     window.scrollTo({ top: 0 });
   }
   window.addEventListener('hashchange', () => { if (S.started) route(); });
-  $('#nav a[data-v=edit]').addEventListener('click', () => { if (D && D.id) { D = blank(); fillForm(); } });
+  $('#nav a[data-v=edit]').addEventListener('click', e => { e.preventDefault(); DM.chooser(() => { D = blank(); fillForm(); go('edit'); }); });
   function go(v) { if (location.hash === '#' + v) route(); else location.hash = '#' + v; }
 
   /* ================= company selector ================= */
@@ -136,7 +138,7 @@
     if (cached) { S.imgs[fileId] = cached; return cached; }
     if (!pending[fileId]) {
       pending[fileId] = API.call('image', { fileId }).then(r => {
-        S.imgs[fileId] = r.dataUrl; LS.set('img_' + fileId, r.dataUrl); preview(); renderCompanies();
+        S.imgs[fileId] = r.dataUrl; LS.set('img_' + fileId, r.dataUrl); preview(); renderCompanies(); if (DM) DM.preview();
       }).catch(() => {}).finally(() => { delete pending[fileId]; });
     }
     return null;
@@ -144,28 +146,51 @@
   const imgsFor = c => c ? { sig: img(c.sigFileId), stamp: img(c.stampFileId) } : {};
 
   /* ================= list ================= */
+  const LTYPES = [['', 'ทั้งหมด'], ['wht', '50 ทวิ'], ['expense', 'ใบเบิกเงิน'], ['bill', 'แจ้งหนี้/วางบิล/ใบเสร็จ'], ['poa', 'มอบอำนาจ']];
   function renderList() {
-    const q = $('#q').value.trim().toLowerCase(), m = $('#mon').value;
+    const q = $('#q').value.trim().toLowerCase(), m = $('#mon').value, T = S.lType;
+    $('#lTypes').innerHTML = LTYPES.map(([k, t]) => `<button type="button" data-lt="${k}" class="${T === k ? 'on' : ''}">${t}</button>`).join('');
     renderTagBar('#lTags', S.lTag, false);
+    if (T && T !== 'wht') $('#lTags').hidden = true;
     const tagOk = c => { if (!S.lTag) return true; const p = payeeOfCert(c); return !!p && (p.tags || []).includes(S.lTag); };
-    const rows = S.certs.filter(c => c.companyId === S.coId && tagOk(c) && (!m || String(c.issueDate).startsWith(m)) &&
-      (!q || [c.payeeName, c.payeeTaxId, c.no, c.book + '/' + c.no].join(' ').toLowerCase().includes(q)))
-      .sort((a, b) => String(b.issueDate).localeCompare(String(a.issueDate)) || String(b.no).localeCompare(String(a.no)));
-    const ta = rows.reduce((s, c) => s + num(c.totalAmount), 0), tt = rows.reduce((s, c) => s + num(c.totalTax), 0);
-    $('#kpis').innerHTML = `<div>จำนวนใบ<b>${rows.length}</b></div><div>ยอดจ่ายรวม<b>${money(ta)}</b></div><div class="tx">ภาษีที่หักรวม<b>${money(tt)}</b></div>`;
+    const certs = (!T || T === 'wht') ? S.certs.filter(c => c.companyId === S.coId && tagOk(c) && (!m || String(c.issueDate).startsWith(m)) &&
+      (!q || [c.payeeName, c.payeeTaxId, c.no, c.book + '/' + c.no].join(' ').toLowerCase().includes(q))).map(c => ({ k: 'wht', d: c, date: c.issueDate, no: c.book + '/' + c.no })) : [];
+    const docs = (T !== 'wht' && !S.lTag) ? S.docs.filter(d => d.companyId === S.coId && (!T || d.type === T) && (!m || String(d.docDate).startsWith(m)) &&
+      (!q || [d.no, d.title, d.createdByName, DM.label(d)].join(' ').toLowerCase().includes(q))).map(d => ({ k: 'doc', d, date: d.docDate, no: d.no })) : [];
+    const rows = certs.concat(docs).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.no).localeCompare(String(a.no)));
+    const tt = certs.reduce((s, c) => s + num(c.d.totalTax), 0);
+    if (T === 'expense') {
+      const pend = docs.filter(x => x.d.status === 'pending'), sum = docs.reduce((s, x) => s + num(x.d.total), 0);
+      $('#kpis').innerHTML = `<div>ใบเบิก<b>${docs.length}</b></div><div>ยอดเบิกรวม<b>${money(sum)}</b></div><div class="tx">รออนุมัติ<b>${pend.length}</b></div>`;
+    } else if (!T || T === 'wht') {
+      const ta = certs.reduce((s, c) => s + num(c.d.totalAmount), 0);
+      $('#kpis').innerHTML = `<div>${T ? 'จำนวนใบ' : 'เอกสาร'}<b>${rows.length}</b></div><div>ยอดจ่าย (50 ทวิ)<b>${money(ta)}</b></div><div class="tx">ภาษีที่หักรวม<b>${money(tt)}</b></div>`;
+    } else {
+      const sum = docs.reduce((s, x) => s + num(x.d.total), 0);
+      $('#kpis').innerHTML = `<div>จำนวน<b>${docs.length}</b></div>${T === 'bill' ? `<div>ยอดรวม<b>${money(sum)}</b></div>` : ''}`;
+    }
     if (!S.companies.length) {
       $('#certCards').innerHTML = `<div class="empty">ยังไม่มีบริษัทในระบบ${isAdmin() ? ' — เริ่มที่แท็บ “บริษัท”' : ' — ติดต่อผู้ดูแลระบบ'}</div>`; return;
     }
-    $('#certCards').innerHTML = rows.length ? rows.map(c => `<button type="button" class="cc" data-open="${esc(c.id)}">
-      <span class="h"><b>${esc(c.book)}/${esc(c.no)}</b><span>${esc(dShort(c.issueDate))} · ${esc(C.FORMS[c.form] || '')}</span></span>
+    $('#certCards').innerHTML = rows.length ? rows.map(r => r.k === 'wht' ? (c => `<button type="button" class="cc" data-open="${esc(c.id)}">
+      <span class="h"><span class="dt-l">50 ทวิ</span><span>${esc(dShort(c.issueDate))} · ${esc(C.FORMS[c.form] || '')}</span></span>
+      <span class="h"><b>${esc(c.book)}/${esc(c.no)}</b></span>
       <span class="nm">${esc(c.payeeName)}</span>
       <span class="am"><span>ยอดจ่าย <b>${money(c.totalAmount)}</b></span><span class="t">ภาษี <b>${money(c.totalTax)}</b></span></span>
-      <span class="hint">โดย ${esc(c.createdByName || '-')}${filesOf('cert', c.id).length ? ' · 📎 ' + filesOf('cert', c.id).length + ' ไฟล์' : ''}</span></button>`).join('')
-      : `<div class="empty">${S.certs.some(c => c.companyId === S.coId) ? 'ไม่พบเอกสารที่ตรงกับตัวกรอง' : 'ยังไม่มีเอกสารของบริษัทนี้ — กด “ออกใบใหม่”'}</div>`;
+      <span class="hint">โดย ${esc(c.createdByName || '-')}${filesOf('cert', c.id).length ? ' · 📎 ' + filesOf('cert', c.id).length + ' ไฟล์' : ''}</span></button>`)(r.d)
+      : (d => `<button type="button" class="cc" data-doc="${esc(d.id)}">
+      <span class="h"><span class="dt-l">${esc(DM.label(d))}</span><span>${esc(dShort(d.docDate))}</span></span>
+      <span class="h"><b>${esc(d.no)}</b>${DM.statusBadge(d)}</span>
+      <span class="nm">${esc(d.title || '-')}</span>
+      ${d.type !== 'poa' ? `<span class="am"><span>${d.type === 'expense' ? 'ยอดเบิก' : 'ยอดรวม'}</span><span><b>${money(d.total)}</b></span></span>` : ''}
+      <span class="hint">โดย ${esc(d.createdByName || '-')}${filesOf('doc', d.id).length ? ' · 📎 ' + filesOf('doc', d.id).length + ' ไฟล์' : ''}</span></button>`)(r.d)).join('')
+      : `<div class="empty">${S.certs.some(c => c.companyId === S.coId) || S.docs.some(d => d.companyId === S.coId) ? 'ไม่พบเอกสารที่ตรงกับตัวกรอง' : 'ยังไม่มีเอกสารของบริษัทนี้ — กด “ออกใบใหม่”'}</div>`;
   }
   $('#q').addEventListener('input', renderList);
+  $('#lTypes').addEventListener('click', e => { const b = e.target.closest('[data-lt]'); if (!b) return; S.lType = b.dataset.lt; if (S.lType && S.lType !== 'wht') S.lTag = ''; renderList(); });
   $('#lTags').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (!b) return; S.lTag = b.dataset.t === S.lTag ? '' : b.dataset.t; renderList(); }); $('#mon').addEventListener('input', renderList);
   $('#certCards').addEventListener('click', e => {
+    const dd = e.target.closest('[data-doc]'); if (dd) { const d = S.docs.find(x => x.id === dd.dataset.doc); if (d) DM.open(d); return; }
     const b = e.target.closest('[data-open]'); if (!b) return;
     const c = S.certs.find(x => x.id === b.dataset.open); if (!c) return;
     D = clone(c); fillForm(); go('edit');
@@ -914,6 +939,9 @@
   $('#updNow').onclick = () => updateSystem($('#updNow'));
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent), standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
   if (isIOS && !standalone) $('#iosHelp').open = true;
+
+  const DM = window.DocsModule({ S, $, $$, esc, toast, dialog, closeDlg, ask, busy, co, imgsFor, filesOf, uploadNow, prepFile, attRow, attClick,
+    saveCache, isAdmin, go, C, uid, clone, todayISO, onChange: () => { renderList(); } });
 
   boot();
 })();
