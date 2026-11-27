@@ -876,6 +876,19 @@
     } catch (err) { $('#logList').textContent = err.message; }
   });
 
+  /* ================= ธีม สว่าง / มืด ================= */
+  const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+  function applyTheme(t) {
+    t = ['light', 'dark'].includes(t) ? t : 'auto';
+    if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+    $$('#themeSeg button').forEach(b => { b.classList.toggle('on', b.dataset.t === t); b.setAttribute('aria-checked', b.dataset.t === t); });
+    const bar = getComputedStyle(document.documentElement).getPropertyValue('--theme-bar').trim();
+    if (bar) $('#themeMeta').setAttribute('content', bar);
+  }
+  $('#themeSeg').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (!b) return; LS.set('theme', b.dataset.t); applyTheme(b.dataset.t); });
+  darkMQ.addEventListener && darkMQ.addEventListener('change', () => applyTheme(LS.get('theme', 'auto')));
+  applyTheme(LS.get('theme', 'auto'));
+
   /* ================= version / update / PWA ================= */
   function registerSW() {
     if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

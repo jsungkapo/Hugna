@@ -2,12 +2,10 @@
    VOICE: เครื่องมือสำนักงาน เรียบ แม่นยำ เหมือนแบบฟอร์มสรรพากรที่กรอกแล้ว
    IDEA: กระดาษ 50 ทวิ + ตรายางสีแดง
    COLOUR/TYPE: ตามโลโก้ — เขียว #187a3e (หลัก), ส้ม #e8701f (เน้น), เขียวมิ้นต์อ่อน (พื้นช่องกรอก) · IBM Plex Sans Thai (UI) / Sarabun (เอกสาร) */
-:root{color-scheme:light dark;
-  --bg:light-dark(#f2f6f3,#0d1310);--panel:light-dark(#fff,#151c18);--ink:light-dark(#13201a,#e6efe9);
-  --mute:light-dark(#56665d,#97a89e);--line:light-dark(#d4e0d8,#27332c);--tint:light-dark(#e9f4ec,#18271f);
-  --brand:light-dark(#187a3e,#4cc27a);--brand-ink:light-dark(#fff,#062010);--brand-soft:light-dark(#cfe7d6,#1f3a2a);
-  --accent:light-dark(#c45a12,#ff9a4d);--orange:#e8701f;--danger:light-dark(#b42318,#ff7b72);--ok:light-dark(#0f7a43,#5fd39a);
-  --sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px);--navh:62px}
+:root{color-scheme:light;--bg:#f2f6f3;--panel:#fff;--ink:#13201a;--mute:#56665d;--line:#d4e0d8;--tint:#e9f4ec;--brand:#187a3e;--brand-ink:#fff;--brand-soft:#cfe7d6;--accent:#c45a12;--danger:#b42318;--ok:#0f7a43;--card2:#fbfcfe;--logo-bg:transparent;--theme-bar:#ffffff;
+  --orange:#e8701f;--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px)}
+:root[data-theme=dark]{color-scheme:dark;--bg:#0d1310;--panel:#151c18;--ink:#e6efe9;--mute:#97a89e;--line:#27332c;--tint:#18271f;--brand:#4cc27a;--brand-ink:#062010;--brand-soft:#1f3a2a;--accent:#ff9a4d;--danger:#ff7b72;--ok:#5fd39a;--card2:#1a2420;--logo-bg:#fff;--theme-bar:#151c18}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--bg:#0d1310;--panel:#151c18;--ink:#e6efe9;--mute:#97a89e;--line:#27332c;--tint:#18271f;--brand:#4cc27a;--brand-ink:#062010;--brand-soft:#1f3a2a;--accent:#ff9a4d;--danger:#ff7b72;--ok:#5fd39a;--card2:#1a2420;--logo-bg:#fff;--theme-bar:#151c18}}
 *{box-sizing:border-box;min-width:0}
 [hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%}
@@ -46,11 +44,11 @@ details summary{cursor:pointer;color:var(--mute);font-size:14px;padding:8px 0;mi
 .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px 20px}
 .auth{width:100%;max-width:400px;display:grid;gap:14px;text-align:left}
 .auth .logo{width:170px;margin:0 auto 2px}.auth h1{text-align:center}.auth .mute{margin:0;text-align:center;font-size:14px}
-.logo{width:min(220px,60vw);height:auto;display:block;margin:0 auto;background:light-dark(transparent,#fff);border-radius:16px;padding:6px}
+.logo{width:min(220px,60vw);height:auto;display:block;margin:0 auto;background:var(--logo-bg);border-radius:16px;padding:6px}
 
 /* --- app shell --- */
 .top{background:var(--panel);color:var(--ink);border-bottom:3px solid var(--brand);padding:calc(10px + var(--sat)) max(4vw,14px) 10px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20}
-.brand{display:flex;align-items:center;gap:6px;flex:none;background:light-dark(transparent,#fff);border-radius:12px;padding:2px 8px 2px 2px;margin-left:-2px}
+.brand{display:flex;align-items:center;gap:6px;flex:none;background:var(--logo-bg);border-radius:12px;padding:2px 8px 2px 2px;margin-left:-2px}
 .brand .mascot{height:40px;width:auto}.brand .wm{height:24px;width:auto}
 .top select{margin-left:auto;max-width:58vw;min-height:42px;font-size:15px}
 .updbar{background:#fff3cd;color:#5a4300;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px max(4vw,14px);font-size:14px}
@@ -90,7 +88,7 @@ legend{font-weight:600;font-size:17px;padding:0;margin-bottom:8px}
 .callout{background:var(--tint);border:1px dashed var(--brand);border-radius:11px;padding:12px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chips button{min-height:38px;padding:4px 12px;border-radius:99px;font-size:14px}.chips b{color:var(--accent);font-weight:600}
-.it{border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:8px;background:light-dark(#fbfcfe,#1a1f26)}
+.it{border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:8px;background:var(--card2)}
 .it-h{display:flex;gap:8px}.x{flex:none;width:46px;padding:0;font-size:20px}
 .it-f{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}
 .it-f .tax{margin-left:auto;font-size:14px;white-space:nowrap}.it-f .tax b{font-size:17px}
