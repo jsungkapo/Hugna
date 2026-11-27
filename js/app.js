@@ -220,6 +220,9 @@
     for (const el of $$('#f [data-k]')) { const v = getP(D, el.dataset.k); if (el.type === 'checkbox') el.checked = v !== false; else el.value = v ?? ''; }
     $('#noIn').placeholder = 'อัตโนมัติ (' + nextNo(D.companyId, D.book) + ')';
     $$('#ptype button').forEach(b => b.classList.toggle('on', b.dataset.v === D.payeeType));
+    const isP = D.payeeType === 'p';  // บุคคลธรรมดาไม่มีสาขา
+    $('#pbL').hidden = isP; $('#pbL').previousElementSibling.style.gridColumn = isP ? '1/-1' : '';
+    $('[data-k=payeeName]').placeholder = isP ? 'เช่น นายสมชาย ใจดี' : 'เช่น บริษัท ตัวอย่าง จำกัด';
     renderFavStrip();
     $('#poL').hidden = +D.payer !== 3;
     $('#copiesSel').value = S.copies;
@@ -286,7 +289,7 @@
       const n = { id: uid(), cat, desc, date: (last && last.date) || todayISO(), amount: '', rate };
       if (last && !C.amt(last)) D.items[D.items.length - 1] = Object.assign(n, { amount: last.amount }); else D.items.push(n);
       renderItems(); preview();
-    } else if (b.dataset.v) { D.payeeType = b.dataset.v; D.form = b.dataset.v === 'j' ? 6 : 3; fillForm(); }
+    } else if (b.dataset.v) { D.payeeType = b.dataset.v; D.form = b.dataset.v === 'j' ? 6 : 3; if (D.payeeType === 'p') D.payeeBranch = ''; fillForm(); }
   });
   $('#addItem').onclick = () => { D.items.push({ id: uid(), cat: 'c5', desc: '', date: todayISO(), amount: '', rate: 3 }); renderItems(); };
   $('#editSeg').addEventListener('click', e => {

@@ -3,7 +3,7 @@
    IDEA: กระดาษ 50 ทวิ + ตรายางสีแดง
    COLOUR/TYPE: ตามโลโก้ — เขียว #187a3e (หลัก), ส้ม #e8701f (เน้น), เขียวมิ้นต์อ่อน (พื้นช่องกรอก) · IBM Plex Sans Thai (UI) / Sarabun (เอกสาร) */
 :root{color-scheme:light;--bg:#f2f6f3;--panel:#fff;--ink:#13201a;--mute:#56665d;--line:#d4e0d8;--tint:#e9f4ec;--brand:#187a3e;--brand-ink:#fff;--brand-soft:#cfe7d6;--accent:#c45a12;--danger:#b42318;--ok:#0f7a43;--card2:#fbfcfe;--logo-bg:transparent;--theme-bar:#ffffff;
-  --orange:#e8701f;--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px)}
+  --orange:#e8701f;--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px);--navh:62px}
 :root[data-theme=dark]{color-scheme:dark;--bg:#0d1310;--panel:#151c18;--ink:#e6efe9;--mute:#97a89e;--line:#27332c;--tint:#18271f;--brand:#4cc27a;--brand-ink:#062010;--brand-soft:#1f3a2a;--accent:#ff9a4d;--danger:#ff7b72;--ok:#5fd39a;--card2:#1a2420;--logo-bg:#fff;--theme-bar:#151c18}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--bg:#0d1310;--panel:#151c18;--ink:#e6efe9;--mute:#97a89e;--line:#27332c;--tint:#18271f;--brand:#4cc27a;--brand-ink:#062010;--brand-soft:#1f3a2a;--accent:#ff9a4d;--danger:#ff7b72;--ok:#5fd39a;--card2:#1a2420;--logo-bg:#fff;--theme-bar:#151c18}}
 *{box-sizing:border-box;min-width:0}
