@@ -9,7 +9,7 @@
  * --------------------------------------------------------------
  */
 var HUGNA_BACKEND = true;
-var VERSION = '1.6.1';
+var VERSION = '1.6.2';
 
 var SESSION_DAYS = 30;
 var HASH_ROUNDS = 300;
@@ -709,8 +709,8 @@ function saveImage_(dataUrl, name) {
 /* ================= docs ================= */
 var DOC_TYPES = { expense: 'ใบเบิกเงิน', bill: 'ใบวางบิล/แจ้งหนี้/ใบเสร็จ', poa: 'หนังสือมอบอำนาจ' };
 var BILL_SUB = { bn: 'BN', iv: 'IV', re: 'RE', qt: 'QT' };
-function docPrefix_(type, subtype) { return type === 'expense' ? 'EX' : type === 'poa' ? 'POA' : BILL_SUB[subtype]; }
-/** เลขที่: PREFIX + YYYYMMDD (ค.ศ. ตามวันที่เอกสาร) + ลำดับ 3 หลักของวันนั้น เช่น EX20261127001 (รันแยกตามบริษัท) */
+function docPrefix_(type, subtype) { return type === 'expense' ? 'EXP' : type === 'poa' ? 'POA' : BILL_SUB[subtype]; }
+/** เลขที่: PREFIX + YYYYMMDD (ค.ศ. ตามวันที่เอกสาร) + ลำดับ 3 หลักของวันนั้น เช่น EXP20261127001 (รันแยกตามบริษัท) */
 function nextDocNo_(all, prefix, companyId, date) {
   var ymd = /^\d{4}-\d{2}-\d{2}/.test(String(date)) ? String(date).slice(0, 10).replace(/-/g, '') : Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyyMMdd');
   var head = prefix + ymd, max = 0;

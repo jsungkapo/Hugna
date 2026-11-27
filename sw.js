@@ -1,6 +1,6 @@
 /* HugNa — service worker
  * VERSION ถูกแก้โดย scripts/bump-version.sh — เปลี่ยนเลขแล้วเบราว์เซอร์จะติดตั้ง SW ใหม่และล้างแคชเก่า */
-const VERSION = '1.6.1';
+const VERSION = '1.6.2';
 const CACHE = 'hugna-' + VERSION;
 const SHELL = ['./', 'index.html', 'icons/icon-192.png', 'img/logo.png', 'img/mascot.png', 'img/wordmark.png'];
 
